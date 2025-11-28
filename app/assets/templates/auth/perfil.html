@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Minha conta - SIMP{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth/perfil.css') }}" />
+{% endblock %}
+
+{% block content %}
+<div class="perfil-wrapper">
+  <div class="perfil-header">
+    <h1>Minha conta</h1>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-messages">
+        {% for category, message in messages %}
+          <div class="flash-message flash-{{ category }}">
+            <i class="fa-solid fa-{% if category == 'error' %}circle-exclamation{% elif category == 'success' %}circle-check{% elif category == 'warning' %}triangle-exclamation{% else %}info-circle{% endif %}"></i>
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Abas -->
+  <div class="tabs">
+    <button class="tab-button active" data-tab="dados">
+      Dados da conta
+    </button>
+    <button class="tab-button" data-tab="seguranca">
+      Segurança
+    </button>
+  </div>
+
+  <!-- Conteúdo das Abas -->
+  <div class="tab-content">
+    <!-- Aba: Dados da conta -->
+    <div class="tab-pane active" id="dados">
+      <div class="perfil-card">
+        <div class="card-section">
+          <h2>Informações pessoais</h2>
+          
+          <!-- Upload de Foto -->
+          <div class="foto-perfil-section">
+            <div class="foto-preview">
+              <img 
+                id="fotoPreview" 
+                src="{% if usuario.foto_perfil %}{{ url_for('static', filename=usuario.foto_perfil) }}{% else %}{{ url_for('static', filename='img/user.jpg') }}{% endif %}" 
+                alt="Foto de perfil"
+                onerror="this.src='https://cdn-icons-png.flaticon.com/512/3135/3135715.png'"
+              />
+            </div>
+            <form method="POST" action="{{ url_for('upload_foto_perfil') }}" enctype="multipart/form-data" class="foto-form">
+              <input 
+                type="file" 
+                id="fotoInput" 
+                name="foto" 
+                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                style="display: none;"
+                onchange="previewFoto(this)"
+              />
+              <label for="fotoInput" class="btn-upload-foto">
+                <i class="fa-solid fa-camera"></i>
+                Alterar foto
+              </label>
+              <button type="submit" class="btn-salvar-foto" style="display: none;" id="btnSalvarFoto">
+                Salvar foto
+              </button>
+            </form>
+          </div>
+          
+          <form method="POST" action="{{ url_for('atualizar_perfil') }}" id="formDados">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="nome_completo">Seu nome completo</label>
+                <input 
+                  type="text" 
+                  id="nome_completo" 
+                  name="nome_completo" 
+                  value="{{ usuario.nome_completo }}"
+                  required
+                />
+              </div>
+              
+              <div class="form-group">
+                <label for="email">Seu e-mail</label>
+                <input 
+                  type="email" 
+                  id="email" 
+                  name="email" 
+                  value="{{ usuario.email }}"
+                  disabled
+                  class="disabled"
+                />
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="tipo_conta">Tipo da conta</label>
+                <input 
+                  type="text" 
+                  id="tipo_conta" 
+                  value="{{ usuario.role }}"
+                  disabled
+                  class="disabled"
+                />
+              </div>
+              
+              <div class="form-group">
+                <label for="data_cadastro">Data do cadastro</label>
+                <input 
+                  type="text" 
+                  id="data_cadastro" 
+                  value="{{ usuario.data_criacao_formatada }}"
+                  disabled
+                  class="disabled"
+                />
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="senha_atual_display">Sua senha</label>
+              <input 
+                type="password" 
+                id="senha_atual_display" 
+                value="••••••••"
+                disabled
+                class="disabled"
+              />
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" class="btn-alterar-senha" onclick="mostrarAbaSeguranca()">
+                Alterar senha
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      
+      <div class="form-footer">
+        <button type="submit" form="formDados" class="btn-salvar">
+          Salvar
+        </button>
+      </div>
+    </div>
+
+    <!-- Aba: Segurança -->
+    <div class="tab-pane" id="seguranca">
+      <div class="perfil-card">
+        <div class="card-section">
+          <h2>Alterar senha</h2>
+          
+          <form method="POST" action="{{ url_for('alterar_senha') }}" id="formSenha">
+            <div class="form-group">
+              <label for="senha_atual">Senha atual</label>
+              <input 
+                type="password" 
+                id="senha_atual" 
+                name="senha_atual" 
+                required
+                placeholder="Digite sua senha atual"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label for="nova_senha">Nova senha</label>
+              <input 
+                type="password" 
+                id="nova_senha" 
+                name="nova_senha" 
+                required 
+                minlength="6"
+                placeholder="Digite sua nova senha"
+              />
+              <small>Mínimo de 6 caracteres</small>
+            </div>
+            
+            <div class="form-group">
+              <label for="confirmar_senha">Confirmar nova senha</label>
+              <input 
+                type="password" 
+                id="confirmar_senha" 
+                name="confirmar_senha" 
+                required 
+                minlength="6"
+                placeholder="Confirme sua nova senha"
+              />
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn-alterar-senha">
+                Alterar senha
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Controle de abas
+document.querySelectorAll('.tab-button').forEach(button => {
+  button.addEventListener('click', function() {
+    const tabName = this.getAttribute('data-tab');
+    
+    // Remover active de todos
+    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+    
+    // Adicionar active no selecionado
+    this.classList.add('active');
+    document.getElementById(tabName).classList.add('active');
+  });
+});
+
+function mostrarAbaSeguranca() {
+  document.querySelector('[data-tab="seguranca"]').click();
+  document.getElementById('senha_atual').focus();
+}
+
+// Preview de foto
+function previewFoto(input) {
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('fotoPreview').src = e.target.result;
+      document.getElementById('btnSalvarFoto').style.display = 'inline-block';
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+</script>
+{% endblock %}

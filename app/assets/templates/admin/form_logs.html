@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Logs do Formulário - Adiantamento{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/form_logs.css') }}">
+{% endblock %}
+
+{% block content %}
+
+<div class="page-wrapper">
+
+    <!-- CABEÇALHO -->
+    <div class="header-area">
+        <h1>Histórico de Logs do Formulário</h1>
+        <p>Acompanhe todas as ações realizadas no controle do formulário.</p>
+    </div>
+
+    <!-- FILTROS -->
+    <form method="GET" class="filtro-card">
+
+        <div class="filtro-item">
+            <label>Ação:</label>
+            <select name="acao">
+                <option value="">Todas</option>
+                {% for a in acoes %}
+                <option value="{{ a }}" {% if acao_filtro == a %}selected{% endif %}>
+                    {{ a }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="filtro-item">
+            <label>De:</label>
+            <input type="date" name="inicio" value="{{ data_inicio }}">
+        </div>
+
+        <div class="filtro-item">
+            <label>Até:</label>
+            <input type="date" name="fim" value="{{ data_fim }}">
+        </div>
+
+        <button type="submit" class="btn-filtrar">Filtrar</button>
+
+        <a href="{{ url_for('admin_form_logs_exportar') }}" class="btn-exportar">
+            Exportar CSV
+        </a>
+        <a href="{{ url_for('formulario') }}" class="btn-formulario" target="_blank">
+            Acessar Formulário
+        </a>
+    </form>
+
+
+    <!-- TABELA DE LOGS -->
+    <div class="tabela-area">
+
+        {% if logs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Ação</th>
+                    <th>Detalhe</th>
+                    <th>Data e Hora</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for l in logs %}
+                <tr>
+                    <td>{{ l.id }}</td>
+                    <td class="acao-col">{{ l.acao }}</td>
+                    <td>{{ l.detalhe or '—' }}</td>
+                    <td>{{ l.data_hora }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="sem-dados">Nenhum registro encontrado.</p>
+        {% endif %}
+    </div>
+
+</div>
+
+{% endblock %}

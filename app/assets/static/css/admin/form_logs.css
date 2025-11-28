@@ -1,0 +1,211 @@
+/* ===== PADRÕES DE LAYOUT ===== */
+.page-wrapper {
+  padding: var(--page-padding);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* CABEÇALHO */
+.header-area {
+  background: transparent;
+  padding: var(--header-padding);
+  border-radius: 0;
+  box-shadow: none;
+  margin-bottom: var(--section-gap);
+  border: none;
+  width: 100%;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.header-area h1 {
+  font-size: var(--font-size-xl);
+  color: var(--primary);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0.3px;
+}
+
+.header-area p {
+  color: var(--text-muted);
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+}
+
+/* FILTROS */
+.filtro-card {
+  background: transparent;
+  padding: var(--card-padding-sm);
+  border-radius: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+  box-shadow: none;
+  margin-bottom: var(--section-gap);
+  border: none;
+  flex-wrap: wrap;
+}
+
+.filtro-item {
+  flex: 1;
+  min-width: 120px;
+}
+
+.filtro-item label {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.filtro-item input,
+.filtro-item select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  min-width: 100%;
+  font-size: var(--font-size-sm);
+  width: 100%;
+}
+
+/* BOTÕES */
+.btn-filtrar {
+  background: var(--primary);
+  color: white;
+  padding: var(--button-padding-sm);
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  transition: var(--transition-fast);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.btn-filtrar:hover {
+  background: var(--primary-hover);
+}
+
+.btn-exportar {
+  background: var(--success);
+  color: white;
+  padding: var(--button-padding-sm);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: var(--font-weight-semibold);
+  transition: var(--transition-fast);
+  display: inline-block;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.btn-exportar:hover {
+  background: var(--success-hover);
+}
+
+.btn-formulario {
+  background: var(--primary);
+  color: white;
+  padding: var(--button-padding-sm);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: var(--font-weight-semibold);
+  display: inline-block;
+  margin-left: var(--spacing-sm);
+  transition: var(--transition-fast);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.btn-formulario:hover {
+  background: var(--primary-hover);
+}
+
+/* TABELA */
+.tabela-area {
+  background: transparent;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: none;
+  border: none;
+}
+
+.tabela-area table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabela-area th {
+  background: var(--primary);
+  color: white;
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.tabela-area td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: var(--font-size-xs);
+}
+
+.tabela-area tbody tr:hover {
+  background: var(--bg-soft);
+}
+
+.tabela-area tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.acao-col {
+  font-weight: var(--font-weight-bold);
+  color: var(--primary);
+  font-size: var(--font-size-xs);
+  text-transform: none;
+}
+
+.sem-dados {
+  margin-top: var(--spacing-md);
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--section-gap);
+  font-size: var(--font-size-sm);
+}
+
+/* ===== RESPONSIVIDADE ===== */
+@media (max-width: 768px) {
+  .page-wrapper {
+    padding: var(--spacing-md);
+  }
+  
+  .filtro-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filtro-item {
+    min-width: 100%;
+  }
+  
+  .filtro-item input,
+  .filtro-item select {
+    min-width: 100%;
+  }
+  
+  .btn-filtrar,
+  .btn-exportar,
+  .btn-formulario {
+    width: 100%;
+    margin-left: 0;
+    margin-top: var(--spacing-xs);
+  }
+}

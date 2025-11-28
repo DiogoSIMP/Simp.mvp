@@ -1,0 +1,34 @@
+# Virtual Environment
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Database
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads e arquivos temporários
+uploads/
+relatorios/
+respostas/
+*.csv
+*.xlsx
+*.rar
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Controle do Formulário - Adiantamento{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/form_config.css') }}">
+{% endblock %}
+
+{% block content %}
+
+<div class="page-wrapper">
+
+    <!-- HEADER -->
+    <div class="header-area">
+        <h1>Controle do Formulário de Adiantamento</h1>
+        <p>Gerencie a abertura, fechamento e horários automáticos do formulário público.</p>
+    </div>
+
+    <!-- GRID DE DUAS COLUNAS -->
+    <div class="config-grid">
+        <!-- COLUNA ESQUERDA -->
+        <div class="config-column">
+            <!-- STATUS ATUAL -->
+            <div class="status-card">
+                <h2>Status Atual</h2>
+
+                {% if cfg.is_open %}
+                    <span class="status aberto">ABERTO</span>
+                {% else %}
+                    <span class="status fechado">FECHADO</span>
+                {% endif %}
+
+                <div class="status-infos">
+                    <p><strong>Abertura Programada:</strong> {{ cfg.scheduled_open or '—' }}</p>
+                    <p><strong>Fechamento Programado:</strong> {{ cfg.scheduled_close or '—' }}</p>
+                </div>
+            </div>
+
+            <!-- AÇÕES MANUAIS -->
+            <div class="card acao-card">
+                <h2>Ações Rápidas</h2>
+
+                <form action="{{ url_for('admin_forms_open') }}" method="POST">
+                    <button class="btn abrir">Abrir Agora</button>
+                </form>
+
+                <form action="{{ url_for('admin_forms_close') }}" method="POST">
+                    <button class="btn fechar">Fechar Agora</button>
+                </form>
+            </div>
+
+            <!-- AGENDAMENTO ESPECÍFICO -->
+            <div class="card agendar-card">
+                <h2>Agendar Abertura / Fechamento</h2>
+
+                <form action="{{ url_for('admin_forms_schedule') }}" method="POST">
+
+                    <div class="form-group">
+                        <label>Abrir em:</label>
+                        <input type="datetime-local"
+                               name="scheduled_open"
+                               value="{{ cfg.scheduled_open|replace(' ', 'T') if cfg.scheduled_open else '' }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Fechar em:</label>
+                        <input type="datetime-local"
+                               name="scheduled_close"
+                               value="{{ cfg.scheduled_close|replace(' ', 'T') if cfg.scheduled_close else '' }}">
+                    </div>
+
+                    <button class="btn salvar">Salvar Agendamentos</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- COLUNA DIREITA -->
+        <div class="config-column">
+            <!-- HORÁRIO AUTOMÁTICO DIÁRIO -->
+            <div class="card horario-auto-card">
+                <h2>Horário Automático Diário</h2>
+                <p class="card-description">O formulário abrirá e fechará automaticamente nos dias e horários configurados abaixo.</p>
+
+                <form action="{{ url_for('admin_forms_auto') }}" method="POST">
+
+                    <!-- Modo Automático -->
+                    <div class="form-group">
+                        <label>Ativar modo automático:</label>
+                        <select name="auto_mode">
+                            <option value="1" {% if cfg.auto_mode == 1 %}selected{% endif %}>Ativado</option>
+                            <option value="0" {% if cfg.auto_mode == 0 %}selected{% endif %}>Desativado</option>
+                        </select>
+                    </div>
+
+                    <!-- Horário de abertura -->
+                    <div class="form-group">
+                        <label>Abrir diariamente às:</label>
+                        <input type="time" name="auto_open_time"
+                            value="{{ cfg.auto_open_time or '' }}">
+                    </div>
+
+                    <!-- Horário de fechamento -->
+                    <div class="form-group">
+                        <label>Fechar diariamente às:</label>
+                        <input type="time" name="auto_close_time"
+                            value="{{ cfg.auto_close_time or '' }}">
+                    </div>
+
+                    <!-- DIAS DA SEMANA -->
+                    <div class="form-group">
+                        <label>Dias da Semana Ativos:</label>
+
+                        <div class="dias-container">
+                            {% set dias_map = {
+                                '1': 'Segunda',
+                                '2': 'Terça',
+                                '3': 'Quarta',
+                                '4': 'Quinta',
+                                '5': 'Sexta',
+                                '6': 'Sábado',
+                                '0': 'Domingo'
+                            } %}
+
+                            {% set dias_selecionados = (cfg.days_enabled or '').split(',') %}
+
+                            {% for dia, nome in dias_map.items() %}
+                                <label class="dia-item">
+                                    <input type="checkbox"
+                                           name="days_enabled"
+                                           value="{{ dia }}"
+                                           {% if dia in dias_selecionados %}checked{% endif %}>
+                                    {{ nome }}
+                                </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <button class="btn salvar">Salvar Horário Automático</button>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

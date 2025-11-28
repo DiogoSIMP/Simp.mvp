@@ -1,0 +1,18 @@
+# Framework Web
+Flask>=3.0.0
+
+# Processamento de dados
+pandas>=2.1.0
+openpyxl>=3.1.0
+
+# Agendamento de tarefas
+APScheduler>=3.10.0
+
+# Variáveis de ambiente
+python-dotenv>=1.0.0
+
+# Werkzeug (segurança de senhas) - já incluso no Flask, mas explícito para clareza
+Werkzeug>=3.0.0
+
+# Criptografia de senhas
+bcrypt>=4.0.0

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Cadastro de Chave PIX{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pix/form_bancario.css') }}">
+<style>
+    .modal-bg {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: rgba(0,0,0,0.5);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 9999;
+    }
+    .modal-card {
+        width: 90%; max-width: 420px;
+        background: #fff; padding: 25px;
+        border-radius: 10px; text-align: center;
+        animation: fadeIn 0.2s ease;
+    }
+    .btn-fechar {
+        margin-top: 20px;
+        display: inline-block;
+        padding: 10px 25px;
+        background: #007bff;
+        color: #fff;
+        border-radius: 6px;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    @keyframes fadeIn { from{ opacity:0; transform:scale(.95);} to{opacity:1; transform:scale(1);} }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="form-container">
+    <div class="form-card">
+
+        <h1>Cadastro de Chave PIX</h1>
+        <p>Digite seu CPF e informe sua chave PIX.</p>
+
+        <form method="POST" action="{{ url_for('form_bancario_enviar') }}">
+            <label>CPF</label>
+            <input type="text" name="cpf" required placeholder="Digite seu CPF">
+
+            <label>Chave PIX</label>
+            <input type="text" id="chave_pix" name="chave_pix" required placeholder="Digite sua chave PIX">
+
+            <button class="btn-enviar">Enviar</button>
+        </form>
+
+    </div>
+</div>
+
+<!-- ========================= -->
+<!--   MODAL DE SUCESSO       -->
+<!-- ========================= -->
+{% if sucesso %}
+<div class="modal-bg">
+    <div class="modal-card">
+        <h2>🎉 Cadastro realizado!</h2>
+        <p>A chave PIX foi enviada para aprovação.</p>
+
+        <a class="btn-fechar" href="{{ url_for('form_bancario') }}">
+            Cadastrar outra chave
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- ========================= -->
+<!--   MODAL DE ERRO GERAL     -->
+<!-- ========================= -->
+{% if erro_tipo == "cpf_invalido" %}
+<div class="modal-bg">
+    <div class="modal-card">
+        <h2>❌ CPF Não Encontrado</h2>
+        <p>O CPF <strong>{{ cpf }}</strong> não está cadastrado como entregador.</p>
+
+        <a class="btn-fechar" href="{{ url_for('form_bancario') }}">Tentar novamente</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- ========================= -->
+<!--   MODAL CHAVE EXISTENTE   -->
+<!-- ========================= -->
+{% if erro_tipo == "chave_existente" %}
+<div class="modal-bg">
+    <div class="modal-card">
+        <h2>❌ Chave PIX Já Utilizada</h2>
+
+        <p>A chave <strong>{{ chave }}</strong> já está cadastrada para:</p>
+        <h3>{{ nome }}</h3>
+
+        <a class="btn-fechar" href="{{ url_for('form_bancario') }}">Tentar outra chave</a>
+    </div>
+</div>
+{% endif %}
+
+<script>
+    const campoChave = document.getElementById("chave_pix");
+    campoChave.addEventListener("input", () => {
+        const v = campoChave.value.trim();
+        let tipo = "ALEATORIA";
+
+        if (v.includes("@")) tipo = "EMAIL";
+        else if (/^\d{11}$/.test(v)) tipo = "TELEFONE";
+        else if (/^\d{14}$/.test(v)) tipo = "CNPJ";
+
+        campoChave.dataset.tipo = tipo;
+    });
+</script>
+
+{% endblock %}

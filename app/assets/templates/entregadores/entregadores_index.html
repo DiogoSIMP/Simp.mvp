@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Entregadores Cadastrados{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/entregadores/entregadores.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="entregadores-card">
+  <div class="header-section">
+    <div class="header-left">
+      <h3>Entregadores Cadastrados</h3>
+      <p class="subtitle">Visualize e gerencie os entregadores cadastrados</p>
+    </div>
+    <div class="card-actions">
+      <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="searchInput" placeholder="Pesquisar entregadores... (nome, UUID, sub-praça)">
+      </div>
+      {% if session.get('user_role') in ['Master', 'Adm'] %}
+      <a href="{{ url_for('novo_entregador') }}" class="btn-novo">+ Novo Entregador</a>
+      {% endif %}
+    </div>
+    <!-- ===== CAIXA DE PESQUISA ===== -->
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      {% if category == 'entregador_success' or category == 'entregador_error' %}
+        <div class="alert {{ 'success' if category == 'entregador_success' else 'error' }}">{{ message }}</div>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  <div class="card-table">
+    {% if entregadores %}
+    <table class="tabela-entregadores">
+      <thead>
+        <tr>
+          <th>UUID</th>
+          <th>Nome</th>
+          <th>Sub-Praça</th>
+          <th>Status</th>
+          <th>Emissor</th>
+          <th>CNPJ</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entregadores %}
+        <tr>
+          <td>{{ e.id_da_pessoa_entregadora }}</td>
+          <td>{{ e.recebedor }}</td>
+          <td>{{ e.subpraca or '-' }}</td>
+          <td><span class="status {{ e.status|lower }}">{{ e.status }}</span></td>
+          <td>{{ e.emissor }}</td>
+          <td>
+            <span class="cnpj-oculto" data-cnpj="{{ e.cnpj }}" onclick="copiarCNPJ('{{ e.cnpj }}')"></span>
+          </td>
+          <td>
+            <button class="btn-olho" 
+                    onclick="abrirDetalhes('{{ e.id_da_pessoa_entregadora }}')">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="sem-dados">
+      <h4>Nenhum entregador cadastrado ainda.</h4>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ===== PAGINAÇÃO ===== -->
+  <div class="pagination">
+    {% if page > 1 %}
+      <a href="{{ url_for('entregadores', page=page-1) }}" class="btn-pag">« Anterior</a>
+    {% endif %}
+
+    <span>Página {{ page }} de {{ total_pages }}</span>
+
+    {% if page < total_pages %}
+      <a href="{{ url_for('entregadores', page=page+1) }}" class="btn-pag">Próxima »</a>
+    {% endif %}
+  </div>
+</div>
+
+<table id="tabelaCompleta" class="tabela-entregadores" style="display:none;">
+    <tbody>
+        {% for e in entregadores_todos %}
+        <tr>
+            <td>{{ e.id_da_pessoa_entregadora }}</td>
+            <td>{{ e.recebedor }}</td>
+            <td>{{ e.subpraca or '-' }}</td>
+            <td><span class="status {{ e.status|lower }}">{{ e.status }}</span></td>
+            <td>{{ e.emissor }}</td>
+            <td>{{ e.cnpj }}</td>
+            <td>
+              <button class="btn-olho" 
+                      onclick="abrirDetalhes('{{ e.id_da_pessoa_entregadora }}')">
+                <i class="fa-solid fa-eye"></i>
+              </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+
+<!-- Painel lateral -->
+<div id="asideDetalhes" class="aside-detalhes">
+  <div class="aside-content">
+    <div class="aside-header">
+      <h3>Detalhes do Entregador</h3>
+      <button class="fechar" onclick="fecharAside()">×</button>
+    </div>
+    <div id="detalhesConteudo" class="info-grid">
+      <p>Carregando...</p>
+    </div>
+    {% if session.get('user_role') in ['Master', 'Adm'] %}
+    <div class="aside-footer">
+      <button class="btn-azul" id="btnEditar">Editar</button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal de edição -->
+<div id="modalEditar" class="modal-editar">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Editar Entregador</h3>
+      <button class="fechar" onclick="fecharModalEditar()">×</button>
+    </div>
+    <form id="formEditarEntregador">
+      <input type="hidden" id="editId" name="id_da_pessoa_entregadora">
+      <label>Nome</label>
+      <input type="text" id="editNome" name="recebedor" required>
+      <label>Email</label>
+      <input type="email" id="editEmail" name="email">
+      <label>CPF</label>
+      <input type="text" id="editCpf" name="cpf">
+      <label>CNPJ</label>
+      <input type="text" id="editCnpj" name="cnpj">
+      <label>Praça</label>
+      <select id="editPraca" name="praca">
+        <option value="">Selecione a praça...</option>
+        <option value="Rio Barra">Rio Barra</option>
+        <option value="Rio Zona Sul">Rio Zona Sul</option>
+        <option value="Rio Campo Grande & Santa Cruz">Rio Campo Grande & Santa Cruz</option>
+        <option value="Rio Madureira">Rio Madureira</option>
+      </select>
+      <label>Sub-praça</label>
+      <select id="editSubpraca" name="subpraca">
+        <option value="">Selecione a sub-praça...</option>
+      </select>
+      <label>Status</label>
+      <select id="editStatus" name="status">
+        <option value="Ativo">Ativo</option>
+        <option value="Inativo">Inativo</option>
+      </select>
+      <label>Tipo de Chave Pix</label>
+      <input type="text" id="editTipoPix" name="tipo_de_chave_pix">
+      <label>Chave Pix</label>
+      <input type="text" id="editChavePix" name="chave_pix">
+      <div class="modal-actions">
+        <button type="button" class="btn-cancelar" onclick="fecharModalEditar()">Cancelar</button>
+        {% if session.get('user_role') in ['Master', 'Adm'] %}
+        <button type="button" class="btn-vermelho" id="btnExcluirEntregador" onclick="confirmarExclusao()">Excluir Entregador</button>
+        {% endif %}
+        <button type="submit" class="btn-azul">Salvar Alterações</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/entregadores.js') }}"></script>
+
+<script>
+function copiarCNPJ(cnpj) {
+  navigator.clipboard.writeText(cnpj);
+  mostrarToast("CNPJ copiado com sucesso!");
+}
+
+function mostrarToast(texto) {
+  let toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = texto;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => toast.classList.add("show"), 100);
+  setTimeout(() => {
+      toast.classList.remove("show");
+      setTimeout(() => toast.remove(), 400);
+  }, 1800);
+}
+
+document.getElementById('searchInput').addEventListener('input', function () {
+    const filtro = this.value.toLowerCase();
+
+    const tabelaPaginada = document.querySelector('.tabela-entregadores'); 
+    const tabelaCompleta = document.getElementById('tabelaCompleta');
+
+    if (filtro.trim() === "") {
+        tabelaPaginada.style.display = "";
+        tabelaCompleta.style.display = "none";
+        return;
+    }
+
+    // Mostra tabela completa e esconde paginada
+    tabelaPaginada.style.display = "none";
+    tabelaCompleta.style.display = "";
+
+    const linhas = tabelaCompleta.querySelectorAll('tbody tr');
+
+    linhas.forEach(linha => {
+        const textoLinha = linha.textContent.toLowerCase();
+        linha.style.display = textoLinha.includes(filtro) ? '' : 'none';
+    });
+});
+
+
+</script>
+{% endblock %}
+
+

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Dashboard - SIMP{% endblock %}</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/favicon.png') }}" />
+
+  <!-- CSS base -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  {% block extra_css %}{% endblock %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme/minimal-panels.css') }}">
+</head>
+
+<body>
+  <div class="layout">
+
+    <!-- ===== NAVBAR SUPERIOR ===== -->
+    <nav class="top-navbar">
+      <div class="navbar-content">
+        <div class="navbar-left">
+          <div class="navbar-logo">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="SIMP Logo" 
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+            <div class="navbar-logo-fallback" style="display: none;">
+              <i class="fa-solid fa-shield-halved"></i>
+            </div>
+          </div>
+          <h2 class="navbar-title">SIMP</h2>
+        </div>
+        <div class="navbar-right">
+          <div class="navbar-profile" id="profileTrigger">
+            <img src="{% if session.get('foto_perfil') %}{{ url_for('static', filename=session.foto_perfil) }}{% else %}{{ url_for('static', filename='img/user.jpg') }}{% endif %}" alt="Foto do Usuário"
+              onerror="this.src='https://cdn-icons-png.flaticon.com/512/3135/3135715.png'" />
+            <div class="profile-info">
+              <span class="profile-name">{{ session.get('nome_completo', 'Usuário') }}</span>
+              <span class="profile-role">{{ session.get('user_role', 'Operacional') }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+
+        <!-- GRUPO: OPERACIONAL -->
+        <div class="sidebar-group">
+          <div class="sidebar-group-title" onclick="toggleSidebarGroup(this)" data-group="operacional">
+            <span>Operacional</span>
+            <i class="fa-solid fa-chevron-down"></i>
+          </div>
+          <nav class="menu sidebar-menu" data-menu="operacional" style="display: block;">
+
+            <a class="menu-item {% if request.endpoint == 'processar_csv' %}active{% endif %}"
+              href="{{ url_for('processar_csv') }}">
+              <i class="fa-solid fa-chart-line"></i><span>Dashboard</span>
+            </a>
+
+            <a class="menu-item {% if request.endpoint == 'entregadores' %}active{% endif %}"
+              href="{{ url_for('entregadores') }}">
+              <i class="fa-solid fa-users"></i><span>Entregadores</span>
+            </a>
+            
+            {#
+            <a class="menu-item {% if request.endpoint == 'upload_csv_page' %}active{% endif %}"
+              href="{{ url_for('upload_csv_page') }}">
+              <i class="fa-solid fa-file-arrow-up"></i><span>Upload CSV</span>
+            </a>
+            #}
+            <a class="menu-item {% if request.endpoint == 'lista_solicitacoes' %}active{% endif %}"
+              href="{{ url_for('lista_solicitacoes') }}">
+              <i class="fa-solid fa-money-bill-transfer"></i>
+              <span>Adiantamento</span>
+            </a>
+            <a class="menu-item {% if request.endpoint == 'listar_lotes' %}active{% endif %}"
+              href="{{ url_for('listar_lotes') }}">
+              <i class="fa-solid fa-layer-group"></i>
+              <span>Lotes</span>
+            </a>
+
+          </nav>
+        </div>
+
+        <!-- GRUPO: FINANCEIRO (apenas Master e Adm) -->
+        {% if session.get('user_role') in ['Master', 'Adm'] %}
+        <div class="sidebar-group">
+          <div class="sidebar-group-title collapsed" onclick="toggleSidebarGroup(this)" data-group="financeiro">
+            <span>Financeiro</span>
+            <i class="fa-solid fa-chevron-down"></i>
+          </div>
+          <nav class="menu sidebar-menu" data-menu="financeiro" style="display: none;">
+
+            <a class="menu-item {% if request.endpoint == 'admin_bancario' %}active{% endif %}"
+              href="{{ url_for('admin_bancario') }}">
+              <i class="fa-solid fa-piggy-bank"></i>
+              <span>Chaves PIX</span>
+            </a>
+
+            {% if session.get('user_role') == 'Master' %}
+            <a class="menu-item {% if request.endpoint == 'admin_pix_logs' %}active{% endif %}"
+              href="{{ url_for('admin_pix_logs') }}">
+              <i class="fa-solid fa-file-circle-exclamation"></i>
+              <span>Logs Bancários</span>
+            </a>
+            {% endif %}
+
+          </nav>
+        </div>
+        {% endif %}
+
+        <!-- GRUPO: SISTEMA (apenas Master) -->
+        {% if session.get('user_role') == 'Master' %}
+        <div class="sidebar-group">
+          <div class="sidebar-group-title collapsed" onclick="toggleSidebarGroup(this)" data-group="sistema">
+            <span>Sistema</span>
+            <i class="fa-solid fa-chevron-down"></i>
+          </div>
+          <nav class="menu sidebar-menu" data-menu="sistema" style="display: none;">
+            <a class="menu-item {% if request.endpoint == 'admin_form_logs' %}active{% endif %}"
+              href="{{ url_for('admin_form_logs') }}">
+              <i class="fa-solid fa-book"></i>
+              <span>Logs do Formulário</span>
+            </a>
+          </nav>
+        </div>
+        {% endif %}
+
+      </div>
+    </aside>
+
+    <!-- ===== MODAL PERFIL ===== -->
+    <div class="profile-modal" id="profileModal">
+      <div class="profile-modal-overlay" id="profileModalOverlay"></div>
+      <div class="profile-modal-content">
+        <div class="profile-modal-header">
+          <div class="profile-modal-user">
+            <img src="{% if session.get('foto_perfil') %}{{ url_for('static', filename=session.foto_perfil) }}{% else %}{{ url_for('static', filename='img/user.jpg') }}{% endif %}" alt="Foto do Usuário"
+              onerror="this.src='https://cdn-icons-png.flaticon.com/512/3135/3135715.png'" />
+            <div>
+              <h3>{{ session.get('nome_completo', 'Usuário') }}</h3>
+              <p>{{ session.get('user_role', 'Operacional') }}</p>
+            </div>
+          </div>
+          <button class="profile-modal-close" id="profileModalClose">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+        <div class="profile-modal-body">
+          <a href="{{ url_for('perfil') }}" class="profile-modal-config">
+            <i class="fa-solid fa-user"></i>
+            <span>Meu Perfil</span>
+          </a>
+          {% if session.get('user_role') == 'Master' %}
+          <a href="{{ url_for('admin_usuarios') }}" class="profile-modal-config">
+            <i class="fa-solid fa-users-gear"></i>
+            <span>Gerenciar Usuários</span>
+          </a>
+          {% endif %}
+          <a href="{{ url_for('admin_forms_painel') }}" class="profile-modal-config">
+            <i class="fa-solid fa-gear"></i>
+            <span>Configurações</span>
+          </a>
+          <a href="{{ url_for('logout') }}" class="profile-modal-logout">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Sair</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== CONTEÚDO PRINCIPAL ===== -->
+    <main class="main-content" id="mainContent">
+      <div class="content-container">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ===== JS BASE ===== -->
+  <script>
+    // ================== MODAL PERFIL ==================
+    const profileTrigger = document.getElementById('profileTrigger');
+    const profileModal = document.getElementById('profileModal');
+    const profileModalOverlay = document.getElementById('profileModalOverlay');
+    const profileModalClose = document.getElementById('profileModalClose');
+    const profileLogout = document.getElementById('profileLogout');
+
+    function abrirModalPerfil() {
+      profileModal.classList.add('active');
+    }
+
+    function fecharModalPerfil() {
+      profileModal.classList.remove('active');
+    }
+
+    if (profileTrigger) {
+      profileTrigger.addEventListener('click', abrirModalPerfil);
+    }
+    if (profileModalOverlay) {
+      profileModalOverlay.addEventListener('click', fecharModalPerfil);
+    }
+    if (profileModalClose) {
+      profileModalClose.addEventListener('click', fecharModalPerfil);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && profileModal.classList.contains('active')) {
+        fecharModalPerfil();
+      }
+    });
+
+    // Logout já é feito via link, não precisa de handler
+
+    // ================== SIDEBAR DROPDOWN ==================
+    function toggleSidebarGroup(element) {
+      const groupName = element.getAttribute('data-group');
+      const menu = document.querySelector(`.sidebar-menu[data-menu="${groupName}"]`);
+      
+      if (menu) {
+        const isCollapsed = element.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+          // Abrir
+          menu.style.display = 'block';
+          element.classList.remove('collapsed');
+        } else {
+          // Fechar
+          menu.style.display = 'none';
+          element.classList.add('collapsed');
+        }
+      }
+    }
+
+    // Toast helper
+    function mostrarToast(texto) {
+      let toast = document.createElement("div");
+      toast.className = "toast";
+      toast.textContent = texto;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.classList.add("show"), 100);
+      setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 400);
+      }, 1800);
+    }
+
+    // Copiar CNPJ helper (caso use em tabelas)
+    function copiarCNPJ(cnpj) {
+      if (!cnpj || cnpj === '-') return;
+      navigator.clipboard.writeText(cnpj)
+        .then(() => mostrarToast("CNPJ copiado!"))
+        .catch(() => {
+          const t = document.createElement('textarea');
+          t.value = cnpj;
+          document.body.appendChild(t);
+          t.select();
+          document.execCommand('copy');
+          document.body.removeChild(t);
+          mostrarToast("CNPJ copiado!");
+        });
+    }
+    window.copiarCNPJ = copiarCNPJ; // expõe no escopo global se você chamar via onclick
+  </script>
+
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

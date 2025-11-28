@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Resultados Processados - SIMP{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/upload/resultado_detalhado.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-wrapper">
+
+  <!-- ===== MENSAGENS FLASH ===== -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert-flash {{ 'error' if category == 'error' else 'success' if category == 'success' else 'info' }}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% if resultado is none or not consolidado_dict %}
+  <!-- ===== TELA VAZIA OU MENSAGEM DIÁRIO ===== -->
+  <div class="empty-dashboard">
+    <div class="empty-content">
+      {% if mensagem_diario %}
+        <i class="fa-solid fa-exclamation-triangle empty-icon" style="color: #ff9800;"></i>
+        <h2>Consolidado Diário</h2>
+        <p>{{ mensagem_diario }}</p>
+        {% if form_aberto %}
+          <a href="{{ url_for('admin_forms_painel') }}" class="btn-upload-csv" style="margin-top: 20px;">
+            <i class="fa-solid fa-cog"></i>
+            Ir para Configurações
+          </a>
+        {% endif %}
+      {% elif mensagem_expirado %}
+        <i class="fa-solid fa-stopwatch empty-icon" style="color:#0b5cff;"></i>
+        <h2>Dados expirados</h2>
+        <p>{{ mensagem_expirado }}</p>
+        <div style="margin-top:20px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+          {% if session.get('user_role') in ['Master', 'Adm'] %}
+          <button class="btn-upload-csv" onclick="abrirModalUpload()">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            Enviar novo CSV
+          </button>
+          {% endif %}
+          <a class="btn-upload-csv ghost" href="{{ url_for('listar_lotes') }}">
+            <i class="fa-solid fa-layer-group"></i>
+            Ver lotes anteriores
+          </a>
+        </div>
+      {% else %}
+        <i class="fa-solid fa-file-csv empty-icon"></i>
+        <h2>Sem dados</h2>
+        <p>Envia um CSV para começar</p>
+        <button class="btn-upload-csv" onclick="abrirModalUpload()">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          Enviar CSV
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% else %}
+  <!-- ===== CABEÇALHO ===== -->
+  <div class="dashboard-header">
+    <div class="header-left">
+      <h1>Resultados Processados</h1>
+      <p>Visão geral dos dados consolidados do sistema</p>
+    </div>
+    <div class="header-right">
+      <div class="dropdown-consolidado">
+        <select id="tipoConsolidado" class="select-consolidado" onchange="alterarTipoConsolidado(this.value)">
+          <option value="padrao" {% if tipo_consolidado == 'padrao' or not tipo_consolidado %}selected{% endif %}>Consolidado Padrão</option>
+          <option value="diario" {% if tipo_consolidado == 'diario' %}selected{% endif %}>Consolidado Diário (Forms)</option>
+        </select>
+      </div>
+      {% if tipo_consolidado == 'diario' %}
+      <a class="btn ghost" href="{{ url_for('processar_csv', tipo='padrao') }}">
+        <i class="fa-solid fa-arrow-left"></i> Voltar para consolidado padrão
+      </a>
+      {% endif %}
+      <a class="btn secondary" href="{{ url_for('listar_lotes') }}">
+        <i class="fa-solid fa-layer-group"></i> Ver lotes
+      </a>
+      <div class="dropdown-exportar" id="dropdownExportarContainer">
+        <button class="btn primary dropdown-toggle" type="button" id="btnExportarExcel">
+          <i class="fa-solid fa-file-excel"></i> Exportar Excel
+          <i class="fa-solid fa-chevron-down"></i>
+        </button>
+        <div class="dropdown-menu-exportar" id="dropdownExportar">
+          <a href="{{ url_for('exportar_excel_adiantamento', tipo='normal') }}" class="dropdown-item">
+            <i class="fa-solid fa-file-excel"></i> Exportar Excel (Normal)
+          </a>
+          <a href="{{ url_for('exportar_excel_adiantamento', tipo='forms') }}" class="dropdown-item">
+            <i class="fa-solid fa-file-excel"></i> Exportar Excel (Forms)
+          </a>
+        </div>
+      </div>
+      {% if session.get('user_role') in ['Master', 'Adm'] %}
+      <button class="btn secondary" onclick="abrirModalUpload()">
+        <i class="fa-solid fa-rotate"></i> Processar Novo CSV
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ===== MÉTRICAS ===== -->
+  <div class="metrics-grid">
+    <div class="metric-card blue">
+      <div class="metric-info">
+      </div>
+    </div>
+
+    <div class="metric-card green">
+      <div class="metric-icon"><i class="fa-solid fa-users"></i></div>
+      <div class="metric-info">
+        <h3>{{ resultado.entregadores_com_dados }}</h3>
+        <p>Entregadores com Dados</p>
+      </div>
+    </div>
+
+    <div class="metric-card yellow">
+      <div class="metric-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div class="metric-info">
+        <h3>{{ resultado.arquivos_com_erro }}</h3>
+        <p>Arquivos com Erro</p>
+      </div>
+    </div>
+
+    
+    </div>
+  </div>
+
+  <!-- ===== TABELA + BUSCA ===== -->
+  <div class="table-card">
+    <div class="table-header">
+      <h3>📋 Detalhamento por Entregador</h3>
+
+      <div class="search-box">
+        <i class="fa-solid fa-search"></i>
+        <input type="text" id="searchInput" placeholder="Buscar entregador...">
+      </div>
+    </div>
+
+    {% if consolidado_dict %}
+    <table id="tabelaResultados">
+      <thead>
+        <tr>
+          <th>Entregador</th>
+          <th>Subpraça</th>
+          <th class="text-right">Valor Total</th>
+          <th class="text-right">60%</th>
+          <th class="text-right">Valor Final</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for row in consolidado_dict %}
+        <tr data-id="{{ row.id_da_pessoa_entregadora }}">
+          <td class="abrirDetalhes">
+            {% set is_cadastrado = row.id_da_pessoa_entregadora in (entregadores_cadastrados_ids or []) %}
+            {% if not is_cadastrado %}
+              <a href="{{ url_for('novo_entregador', id_da_pessoa_entregadora=row.id_da_pessoa_entregadora, recebedor=row.recebedor or '') }}" 
+                 class="nome-entregador nao-cadastrado link-cadastro">
+                {{ row.recebedor or row.id_da_pessoa_entregadora }}
+                <i class="fa-solid fa-triangle-exclamation icon-alerta"></i>
+              </a>
+            {% else %}
+              <span class="nome-entregador">
+                {{ row.recebedor or row.id_da_pessoa_entregadora }}
+              </span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.subpracas and row.subpracas != 'nan' and row.subpracas != '' %}
+              {{ row.subpracas }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="text-right">R$ {{ "%.2f"|format(row.valor_total) }}</td>
+          <td class="text-right">R$ {{ "%.2f"|format(row.valor_60_percent) }}</td>
+          <td class="text-right">R$ {{ "%.2f"|format(row.valor_final) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- PAGINAÇÃO -->
+    <div class="pagination">
+      {% if page > 1 %}
+      <a href="{{ url_for('processar_csv', page=page-1) }}" class="btn-pag">« Anterior</a>
+      {% endif %}
+
+      <span>Página {{ page }} de {{ total_pages }}</span>
+
+      {% if page < total_pages %}
+      <a href="{{ url_for('processar_csv', page=page+1) }}" class="btn-pag">Próxima »</a>
+      {% endif %}
+    </div>
+
+    {% else %}
+    <div class="no-data">
+      <i class="fa-solid fa-database"></i>
+      <p>Nenhum dado disponível</p>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endif %}
+</div>
+
+<!-- ===== MODAL DE UPLOAD ===== -->
+<div id="modalUpload" class="modal-upload">
+  <div class="modal-upload-overlay" onclick="fecharModalUpload()"></div>
+  <div class="modal-upload-content">
+    <div class="modal-upload-header">
+      <h3>Upload de Arquivos CSV</h3>
+      <button class="modal-upload-close" onclick="fecharModalUpload()">
+        <i class="fa-solid fa-times"></i>
+      </button>
+    </div>
+    
+    <div class="modal-upload-body">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert {{ 'error' if category == 'error' else 'success' }}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <form id="uploadFormModal" method="POST" action="{{ url_for('processar_csv') }}" enctype="multipart/form-data">
+        <div class="upload-area-modal" id="drop-area-modal">
+          <input type="file" id="arquivos-modal" name="arquivos" multiple accept=".csv" onchange="updateFileListModal()" hidden>
+          <label for="arquivos-modal" class="upload-label-modal">
+            <i class="fa-solid fa-cloud-arrow-up upload-icon-modal"></i>
+            <h4>Selecione ou arraste arquivos CSV aqui</h4>
+            <p>Formatos aceitos: <strong>.csv</strong></p>
+          </label>
+          <div id="file-list-modal" class="file-list-modal"></div>
+        </div>
+      
+        <button type="submit" class="btn-processar-modal">
+          <i class="fa-solid fa-gears"></i> Processar Arquivos
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LOADING OVERLAY ===== -->
+<div id="loading-overlay">
+  <div class="loader"></div>
+  <p>Processando arquivos, aguarde...</p>
+</div>
+
+<!-- ===== TABELA ESCONDIDA PARA BUSCA GLOBAL ===== -->
+<table id="tabelaCompleta" style="display:none;">
+  <tbody>
+    {% if consolidado_todos %}
+      {% for row in consolidado_todos %}
+      <tr data-id="{{ row.id_da_pessoa_entregadora }}">
+        <td class="abrirDetalhes">{{ row.recebedor or "-" }}</td>
+        <td>{{ row.subpracas }}</td>
+        <td>{{ row.valor_total }}</td>
+        <td>{{ row.valor_60_percent }}</td>
+        <td>{{ row.valor_final }}</td>
+      </tr>
+      {% endfor %}
+    {% endif %}
+  </tbody>
+</table>
+
+<!-- ===== PAINEL LATERAL ===== -->
+<div id="asideDetalhes" class="aside-detalhes">
+  <div class="aside-content">
+    <div class="aside-header">
+      <h3>Detalhes do Entregador</h3>
+      <button class="fechar" onclick="fecharAside()">×</button>
+    </div>
+    <div id="detalhesConteudo" class="info-grid">Carregando...</div>
+  </div>
+</div>
+
+<!-- JS -->
+<script>
+// Funções do modal - disponíveis globalmente
+function abrirModalUpload() {
+    const modal = document.getElementById('modalUpload');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function fecharModalUpload() {
+    const modal = document.getElementById('modalUpload');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+// Fechar modal ao pressionar ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        fecharModalUpload();
+    }
+});
+
+// ========================
+// === ALTERAR TIPO CONSOLIDADO ====
+// ========================
+function alterarTipoConsolidado(tipo) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tipo', tipo);
+    window.location.href = url.toString();
+}
+</script>
+<script src="{{ url_for('static', filename='js/resultado_detalhado.js') }}"></script>
+
+{% endblock %}

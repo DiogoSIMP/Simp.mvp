@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Logs PIX — Administração{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pix/pix_admin.css') }}">
+<style>
+    .badge-critico {
+        background: #e74c3c;
+        color: #fff;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .badge-alerta {
+        background: #f39c12;
+        color: #fff;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .texto-cinza {
+        color: #999;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-wrapper">
+
+    <!-- HEADER -->
+    <div class="header-area">
+        <h1>Logs de Erros - Formulário Bancário</h1>
+        <p>Veja as tentativas inválidas de cadastro de chave PIX.</p>
+    </div>
+
+    <!-- FILTROS -->
+    <form method="GET" class="filtros-form">
+
+        <input type="text" name="busca" placeholder="CPF, chave ou motivo..."
+               value="{{ filtro_busca }}">
+
+        <select name="motivo">
+            <option value="">Todos motivos</option>
+            {% for m in motivos %}
+                <option value="{{ m }}" {% if filtro_motivo==m %}selected{% endif %}>
+                    {{ m }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <input type="date" name="inicio" value="{{ data_inicio }}">
+        <input type="date" name="fim" value="{{ data_fim }}">
+
+        <button class="btn-filtrar">Filtrar</button>
+
+        <a href="{{ url_for('admin_pix_logs_exportar') }}" class="btn-exportar">Exportar CSV</a>
+
+    </form>
+
+    <!-- TABELA -->
+    <table class="tabela">
+        <thead>
+            <tr>
+                <th>CPF</th>
+                <th>Chave Pix</th>
+                <th>Tipo</th>
+                <th>Motivo</th>
+                <th>IP</th>
+                <th>User-Agent</th>
+                <th>Data/Hora</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for r in logs %}
+            <tr>
+
+                <td>{{ r.cpf or '—' }}</td>
+                <td>{{ r.chave_pix or '—' }}</td>
+                <td>{{ r.tipo_chave }}</td>
+
+                <!-- MOTIVO COM BADGE -->
+                <td>
+                    {% if "duplicada" in r.motivo.lower() %}
+                        <span class="badge-critico">{{ r.motivo }}</span>
+                    {% elif "não encontrado" in r.motivo.lower() %}
+                        <span class="badge-alerta">{{ r.motivo }}</span>
+                    {% else %}
+                        {{ r.motivo }}
+                    {% endif %}
+                </td>
+
+                <td>{{ r.ip }}</td>
+
+                <td>
+                    <span class="texto-cinza" title="{{ r.user_agent }}">
+                        {{ r.user_agent[:35] }}...
+                    </span>
+                </td>
+
+                <td>{{ r.data_hora }}</td>
+
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+{% endblock %}

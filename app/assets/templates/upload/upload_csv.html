@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Upload CSV - SIMP{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/upload/upload.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="upload-page">
+  <div class="upload-card">
+    <div class="upload-header">
+      <div>
+        <h3>Upload de Arquivos CSV</h3>
+        <p>Envie os arquivos exportados do iFood para processamento</p>
+      </div>
+      <button class="btn-voltar" onclick="location.href='{{ url_for('entregadores') }}'">
+        ← Voltar
+      </button>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert {{ 'error' if category == 'error' else 'success' }}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form id="uploadForm" method="POST" action="{{ url_for('processar_csv') }}" enctype="multipart/form-data">
+        <div class="upload-area" id="drop-area">
+          <input type="file" id="arquivos" name="arquivos" multiple accept=".csv" onchange="updateFileList()" hidden>
+          <label for="arquivos" class="upload-label">
+            <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+            <h4>Selecione ou arraste arquivos CSV aqui</h4>
+            <p>Formatos aceitos: <strong>.csv</strong></p>
+          </label>
+          <div id="file-list" class="file-list"></div>
+        </div>
+      
+        <button type="submit" class="btn-processar">
+          <i class="fa-solid fa-gears"></i> Processar Arquivos
+        </button>
+      </form>
+      
+      <!-- ===== LOADING OVERLAY ===== -->
+      <div id="loading-overlay">
+        <div class="loader"></div>
+        <p>Processando arquivos, aguarde...</p>
+      </div>
+      
+
+    <div class="instrucoes">
+      <h5>Instruções</h5>
+      <ul>
+        <li>Selecione arquivos CSV exportados diretamente do iFood.</li>
+        <li>Você pode enviar múltiplos arquivos de uma vez.</li>
+        <li>O sistema consolidará automaticamente os dados.</li>
+        <li>Após o processamento, os dados aparecerão no painel de entregadores.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+      function updateFileList() {
+        const input = document.getElementById('arquivos');
+        const fileList = document.getElementById('file-list');
+    
+        if (input.files.length > 0) {
+          let html = '<strong>Arquivos selecionados:</strong><br>';
+          for (let i = 0; i < input.files.length; i++) {
+            html += `• ${input.files[i].name}<br>`;
+          }
+          fileList.innerHTML = html;
+        } else {
+          fileList.innerHTML = '';
+        }
+      }
+    
+      // Drag & Drop
+      const dropArea = document.getElementById('drop-area');
+      dropArea.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropArea.classList.add('hover');
+      });
+      dropArea.addEventListener('dragleave', () => {
+        dropArea.classList.remove('hover');
+      });
+      dropArea.addEventListener('drop', e => {
+        e.preventDefault();
+        dropArea.classList.remove('hover');
+        document.getElementById('arquivos').files = e.dataTransfer.files;
+        updateFileList();
+      });
+    
+      // ===== Overlay de carregamento =====
+      const form = document.getElementById('uploadForm');
+      const overlay = document.getElementById('loading-overlay');
+    
+      form.addEventListener('submit', function() {
+        overlay.style.display = 'flex';
+      });
+    });
+    </script>
+    
+{% endblock %}

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verificação em Duas Etapas - SIMP</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/auth/login.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/auth/verificar_2fa.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <h1><i class="fa-solid fa-shield-halved"></i> Verificação em Duas Etapas</h1>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-messages">
+            {% for category, message in messages %}
+              <div class="flash-message flash-{{ category }}">
+                <i class="fa-solid fa-{% if category == 'error' %}circle-exclamation{% elif category == 'success' %}circle-check{% elif category == 'warning' %}triangle-exclamation{% else %}info-circle{% endif %}"></i>
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <div class="info-box">
+        <i class="fa-solid fa-envelope"></i>
+        <p>Enviamos um código de verificação para:</p>
+        <strong>{{ session.get('pending_email', 'seu e-mail') }}</strong>
+      </div>
+
+      <form method="POST" action="{{ url_for('verificar_2fa') }}" class="login-form">
+        <div class="form-group">
+          <label for="codigo">
+            <i class="fa-solid fa-key"></i> Código de Verificação
+          </label>
+          <input 
+            type="text" 
+            id="codigo" 
+            name="codigo" 
+            placeholder="Ex: ABCD123"
+            required 
+            autofocus
+            maxlength="7"
+            pattern="[A-Za-z0-9]{7}"
+            style="text-transform: uppercase; letter-spacing: 2px; font-size: 20px; text-align: center; font-family: 'Courier New', monospace;"
+            oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)"
+          />
+        </div>
+
+        <button type="submit" class="btn-login">
+          <i class="fa-solid fa-check"></i>
+          Verificar
+        </button>
+      </form>
+
+      <form method="POST" action="{{ url_for('reenviar_codigo_2fa') }}" class="resend-form">
+        <button type="submit" class="btn-resend">
+          <i class="fa-solid fa-paper-plane"></i>
+          Reenviar Código
+        </button>
+      </form>
+
+      <div class="help-text">
+        <p><i class="fa-solid fa-clock"></i> O código expira em 10 minutos</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+

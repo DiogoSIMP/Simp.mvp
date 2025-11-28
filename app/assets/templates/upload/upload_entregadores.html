@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Upload de Entregadores{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/upload/upload_entregadores.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="upload-container">
+  <div class="header-area">
+    <h1>Upload de Entregadores (.xlsx)</h1>
+    <p>Envie o arquivo Excel com os dados dos entregadores e visualize antes de importar.</p>
+  </div>
+
+  <form action="{{ url_for('upload_entregadores') }}" method="POST" enctype="multipart/form-data">
+    <input type="file" name="arquivo" accept=".xlsx" required>
+    <button type="submit" class="btn-primary">Pré-visualizar</button>
+  </form>
+
+  {% if preview %}
+  <div class="preview-section">
+    <h2>Pré-visualização ({{ preview|length }} registros)</h2>
+    <form action="{{ url_for('confirmar_importacao_entregadores') }}" method="POST">
+        <input type="hidden" name="token" value="{{ token }}">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              {% for col in preview[0].keys() %}
+              <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview %}
+            <tr>
+              {% for val in row.values() %}
+              <td>{{ val }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="submit" class="btn-confirm">Confirmar Importação</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

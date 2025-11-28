@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Aprovação de Chaves PIX{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pix/pix_admin.css') }}">
+<style>
+    .page-wrapper {
+        padding: var(--page-padding);
+        max-width: var(--page-max-width);
+        margin: 0 auto;
+    }
+
+    .header-area {
+        position: relative;
+    }
+
+    .btn-voltar {
+        position: absolute;
+        top: 50%;
+        right: var(--spacing-xl);
+        transform: translateY(-50%);
+        background: var(--primary);
+        padding: var(--button-padding-sm);
+        border-radius: var(--radius-sm);
+        color: #fff;
+        text-decoration: none;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        transition: var(--transition-fast);
+    }
+    .btn-voltar:hover { 
+        transform: translateY(-50%) translateY(-2px);
+        background: var(--primary-hover);
+    }
+
+    /* GRID DE CARDS */
+    .lista-cards {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    @media (min-width: 700px) {
+        .lista-cards {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (min-width: 1000px) {
+        .lista-cards {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    .card {
+        background: var(--bg-card);
+        padding: var(--card-padding);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-soft);
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        border: 1px solid var(--border-soft);
+    }
+
+    .card h3 {
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-bold);
+        margin: 0;
+        color: var(--text-main);
+        text-transform: none;
+    }
+
+    .info {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+    }
+
+    .linha {
+        border-bottom: 1px solid var(--border-soft);
+        margin: var(--spacing-sm) 0;
+    }
+
+    .btn-aprovar {
+        background: var(--success);
+        color: #fff;
+        padding: var(--button-padding-sm);
+        border-radius: var(--radius-sm);
+        text-align: center;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+        transition: var(--transition-fast);
+        width: 100%;
+    }
+    .btn-aprovar:hover {
+        background: var(--success-hover);
+        transform: translateY(-2px);
+    }
+
+    .nenhum {
+        text-align: center;
+        padding: var(--spacing-3xl);
+        font-size: var(--font-size-lg);
+        color: var(--text-muted);
+        background: var(--bg-card);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-soft);
+        border: 1px solid var(--border-soft);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-wrapper">
+
+    <!-- CABEÇALHO -->
+    <div class="header-area">
+        <h1>Aprovação de Chaves PIX</h1>
+        <p>Gerencie as chaves PIX pendentes de aprovação</p>
+        <a href="{{ url_for('admin_bancario') }}" class="btn-voltar">Voltar</a>
+    </div>
+
+    {% if pendentes|length == 0 %}
+        <div class="nenhum">Nenhuma chave aguardando aprovação 👌</div>
+    {% else %}
+
+    <!-- LISTA DE PENDENTES -->
+    <div class="lista-cards">
+
+        {% for p in pendentes %}
+        <div class="card">
+            <h3>
+                {% if p.recebedor %}
+                    {{ p.recebedor }}
+                {% elif p.cpf %}
+                    <span style="color: #e74c3c; font-size: 0.9em;">Entregador não cadastrado ainda</span>
+                {% else %}
+                    <span style="color: #e74c3c; font-size: 0.9em;">NÃO CADASTRADO</span>
+                {% endif %}
+            </h3>
+            <div class="info"><strong>CPF:</strong> {{ p.cpf or "—" }}</div>
+            <div class="info"><strong>Subpraça:</strong> {{ p.subpraca or "—" }}</div>
+            <div class="linha"></div>
+            <div class="info"><strong>Chave PIX:</strong> {{ p.chave_pix }}</div>
+            <div class="info"><strong>Tipo:</strong> {{ p.tipo_de_chave_pix }}</div>
+            <div class="info"><strong>Data Registro:</strong> {{ p.data_registro }}</div>
+            <div class="linha"></div>
+
+            <form action="{{ url_for('aprov_pix', id=p.id) }}" method="POST">
+                <button class="btn-aprovar" type="submit">Aprovar</button>
+            </form>
+        </div>
+        {% endfor %}
+
+    </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

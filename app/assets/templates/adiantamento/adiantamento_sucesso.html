@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitação Enviada - Adiantamento</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adiantamento/form_adiantamento.css') }}">
+</head>
+<body>
+
+<div class="form-container">
+    <div class="modal-card">
+        <div class="icon-success">✅</div>
+        <h1 style="color:#2ecc71;">Solicitação Enviada com Sucesso!</h1>
+        <p>Olá <strong>{{ nome }}</strong>! Recebemos sua solicitação de adiantamento.</p>
+        <p>Nosso time irá validar as informações e o valor será considerado na rodada diária de adiantamentos.</p>
+        
+        <a href="{{ url_for('formulario') }}" class="btn-fechar">Nova Solicitação</a>
+
+        <p style="margin-top: var(--spacing-lg); color: var(--text-muted); font-size: var(--font-size-xs);">
+            Caso tenha enviado incorretamente, você pode reenviar um novo formulário com os dados atualizados.
+        </p>
+    </div>
+</div>
+
+</body>
+</html>

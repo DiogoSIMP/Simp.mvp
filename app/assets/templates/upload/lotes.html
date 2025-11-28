@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Lotes Processados - SIMP{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/upload/lotes.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="lotes-wrapper">
+  <div class="lotes-header">
+    <div class="lotes-title">
+      
+      <h1>Lotes Processados</h1>
+      <p>Histórico dos CSVs enviados. Use esta visão para consultar uploads anteriores.</p>
+    </div>
+    {% if session.get('user_role') in ['Master', 'Adm'] %}
+    <div class="lotes-actions">
+      <button class="btn primary" onclick="window.location.href='{{ url_for('processar_csv') }}'">
+        <i class="fa-solid fa-cloud-arrow-up"></i> Novo processamento
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if lotes %}
+  <div class="lotes-grid">
+    {% for lote in lotes %}
+    <article class="lote-card {% if lote.tem_erro %}erro{% endif %}">
+      {% if session.get('user_role') == 'Master' %}
+      <button class="lote-delete-btn" onclick="excluirLote('{{ lote.id }}', '{{ lote.titulo }}')" title="Excluir lote">
+        <i class="fa-solid fa-times"></i>
+      </button>
+      {% endif %}
+      <header>
+        <div class="lote-icon">
+          <i class="fa-solid fa-layer-group"></i>
+        </div>
+        <div class="lote-info">
+          <p class="lote-title">{{ lote.titulo }}</p>
+          <small>{{ lote.criado_em_display }} • {{ lote.tempo_relativo }}</small>
+        </div>
+        <div class="lote-value">
+          <span>R$ {{ "%.2f"|format(lote.valor_total) }}</span>
+          <small>{{ lote.total_entregadores }} entregadores</small>
+        </div>
+      </header>
+
+      <section class="lote-body">
+        <div class="lote-stats">
+          <div>
+            <p>Arquivos processados</p>
+            <strong>{{ lote.arquivos_sucesso }}</strong>
+          </div>
+          <div>
+            <p>Falhas</p>
+            <strong {% if lote.arquivos_com_erro %}class="erro-text"{% endif %}>
+              {{ lote.arquivos_com_erro }}
+            </strong>
+          </div>
+          <div>
+            <p>Erros</p>
+            <strong {% if lote.qtd_erros %}class="erro-text"{% endif %}>
+              {{ lote.qtd_erros }}
+            </strong>
+          </div>
+        </div>
+        <div class="lote-files">
+          <span>Arquivos:</span>
+          <p title="{{ lote.descricao_completa }}">{{ lote.descricao_completa }}</p>
+        </div>
+      </section>
+
+      <footer>
+        <span class="badge {{ 'erro' if lote.tem_erro else 'success' }}">
+          {{ 'Falhas no lote' if lote.tem_erro else 'Processado' }}
+        </span>
+        <small>{{ lote.arquivos_total }} arquivo(s)</small>
+      </footer>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="lotes-empty">
+    <i class="fa-solid fa-inbox"></i>
+    <p>Nenhum lote registrado ainda.</p>
+    <button class="btn primary" onclick="window.location.href='{{ url_for('processar_csv') }}'">
+      Processar primeiro CSV
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function excluirLote(loteId, loteTitulo) {
+  if (!confirm(`Tem certeza que deseja excluir o lote "${loteTitulo}"?\n\nEsta ação não pode ser desfeita!`)) {
+    return;
+  }
+  
+  fetch(`/lotes/${loteId}/excluir`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else {
+      alert('Erro ao excluir lote: ' + (data.message || 'Erro desconhecido'));
+    }
+  })
+  .catch(error => {
+    console.error('Erro:', error);
+    alert('Erro ao excluir lote. Tente novamente.');
+  });
+}
+</script>
+{% endblock %}
+

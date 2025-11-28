@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Solicitações de Adiantamento - ABJP{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/adiantamento/adiantamento_lista.css') }}">
+{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+  {% for category, message in messages %}
+    {% if category == 'adiantamento_success' or category == 'adiantamento_error' or category == 'adiantamento_info' or category == 'adiantamento_warning' %}
+      <div class="alert-flash" style="margin: 20px; padding: 15px; border-radius: 5px; background: {% if category == 'adiantamento_success' %}#2ecc71{% elif category == 'adiantamento_error' %}#e74c3c{% elif category == 'adiantamento_warning' %}#f39c12{% else %}#3498db{% endif %}; color: white;">
+        {{ message }}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% endwith %}
+
+<div class="page-wrapper">
+
+  <!-- TÍTULO -->
+  <div class="header-area">
+    <h1>Adiantamento <span class="badge-hoje">Hoje</span></h1>
+    <p>Gerencie e filtre todos os pedidos enviados pelos entregadores.</p>
+  </div>
+
+  <!-- BOTÃO DIREITA -->
+  <div class="acoes-superior">
+    <button class="btn-historico" onclick="abrirHistorico()">📅 Histórico</button>
+  </div>
+
+  <!-- FILTROS -->
+  <form id="formFiltros" method="GET">
+    <div class="filtros-container">
+
+      <div class="filtro-item">
+        <label for="busca">Pesquisar:</label>
+        <input type="text" name="busca" placeholder="Nome, CPF, Email...">
+      </div>
+
+      <div class="filtro-item">
+        <label for="dia">Dia:</label>
+        <input type="date" id="dataFiltro" name="dia" value="{{ filtro_dia or current_date }}">
+      </div>
+
+      <div class="filtro-item">
+        <label for="mes">Mês:</label>
+        <select name="mes">
+          <option value="">Todos</option>
+          {% for m in range(1, 13) %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filtro-item">
+        <label>Status CPF:</label>
+        <select name="cpf_status">
+          <option value="">Todos</option>
+          <option value="1">Válido</option>
+          <option value="0">Não encontrado</option>
+        </select>
+      </div>
+
+      <div class="filtro-item">
+        <label>Subpraça:</label>
+        <select name="sub">
+          <option value="">Todas</option>
+          {% for s in subpracas %}
+            <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="acoes-filtro">
+          <button type="submit" class="btn-aplicar">Aplicar Filtros</button>
+          <button type="button" class="btn-limpar" onclick="limparFiltros()">Limpar</button>
+      </div>
+
+
+    </div>
+  </form>
+  
+
+  <!-- ÁREA DE TABELA -->
+  <div class="tabela-area">
+
+    {% if solicitacoes %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>CPF</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Praça</th>
+          <th>Valor Total</th>
+          <th>60%</th>
+          <th>Valor Final</th>
+          <th>Concorda</th>
+          <th>Data Solicitação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in solicitacoes %}
+        <tr class="{{ 'linha-valida' if s['cpf_bate'] else 'linha-invalida' }}">
+          <td>{{ s['id'] }}</td>
+          <td>{{ s['nome'] }}</td>
+          <td>{{ s['cpf'] }}</td>
+          <td>{{ s['email'] }}</td>
+
+          <td>
+            {% if s.get('cpf_bate') == 1 or s.get('cpf_bate') == True %}
+              <span class="status-valido">✓ Válido</span>
+            {% else %}
+              <span class="status-invalido">✗ Não encontrado</span>
+            {% endif %}
+          </td>
+
+          <td>{{ s['praca'] or '—' }}</td>
+          <td>R$ {{ "%.2f"|format(s.get('valor_total_dia', s.get('valor_informado', 0))) }}</td>
+          <td>R$ {{ "%.2f"|format(s.get('valor_60_percent_dia', 0)) }}</td>
+          <td>R$ {{ "%.2f"|format(s.get('valor_final_dia', 0)) }}</td>
+          <td>{{ s['concorda'] or '—' }}</td>
+          <td>{{ s['data_envio'] or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sem-dados">Nenhuma solicitação encontrada.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- =============== MODAL HISTÓRICO =============== -->
+<div id="modalHistorico" class="modal-historico">
+  <div class="modal-historico-header">
+    <div>
+      <p class="modal-chip">Histórico</p>
+      <h3>📅 Dias Processados</h3>
+      <span class="modal-subtitle">Selecione um CSV para aplicar o filtro rapidamente</span>
+    </div>
+    <button class="fechar" onclick="fecharHistorico()">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <div class="modal-historico-content">
+    <ul class="lista-historico-modal">
+        {% if arquivos_csv_info %}
+            {% for arquivo in arquivos_csv_info %}
+            <li class="linha-historico" onclick="filtrarPorDia('{{ arquivo.data_base|default('', true) }}')">
+                <div class="info-arquivo">
+                    <span class="nome-arquivo" title="{{ arquivo.nome_arquivo }}">
+                        {{ arquivo.nome_original }}
+                    </span>
+                    <span class="data-upload">
+                        📅 {{ arquivo.data_upload_formatada }}
+                    </span>
+                </div>
+
+                <a class="btn-relatorio-linha" 
+                  href="/adiantamento/gerar-diario?arquivo={{ arquivo.nome_arquivo|urlencode }}">
+                    Gerar relatório
+                </a>
+            </li>
+            {% endfor %}
+        {% else %}
+            <li class="linha-historico">
+                <span>Nenhum arquivo CSV encontrado</span>
+            </li>
+        {% endif %}
+    </ul>
+  </div>
+
+  <div class="modal-acoes">
+    <button class="btn-limpar-modal" onclick="limparFiltros()">Mostrar tudo</button>
+  </div>
+</div>
+<div id="overlayHistorico" class="modal-historico-overlay" onclick="fecharHistorico()"></div>
+
+
+<script>
+const modalHistorico = document.getElementById("modalHistorico");
+const overlayHistorico = document.getElementById("overlayHistorico");
+
+function abrirHistorico() {
+  modalHistorico?.classList.add("open");
+  overlayHistorico?.classList.add("open");
+}
+
+function fecharHistorico() {
+  modalHistorico?.classList.remove("open");
+  overlayHistorico?.classList.remove("open");
+}
+
+function filtrarPorDia(dia) {
+  document.getElementById("dataFiltro").value = dia;
+  fecharHistorico();
+  document.getElementById("formFiltros").submit();
+}
+function limparFiltros() {
+  document.querySelector("input[name='busca']").value = "";
+  // Manter o dia atual ao limpar filtros
+  document.querySelector("input[name='dia']").value = "{{ current_date }}";
+  document.querySelector("select[name='mes']").value = "";
+  document.querySelector("select[name='cpf_status']").value = "";
+  document.querySelector("select[name='sub']").value = "";
+  document.getElementById("formFiltros").submit();
+}
+
+function filtrarPorDia(dia) {
+    document.querySelector("input[name='dia']").value = dia;
+
+    // define o botão de relatório diário
+    document.getElementById("btnGerarDiario").href = "/adiantamento/gerar-diario?data=" + dia;
+
+    // aplica filtro
+    fecharHistorico();
+    document.getElementById("formFiltros").submit();
+}
+
+</script>
+
+
+{% endblock %}

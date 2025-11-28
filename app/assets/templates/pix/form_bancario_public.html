@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastro de Chave PIX</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pix/form_bancario.css') }}">
+</head>
+<body>
+
+<div class="form-container">
+    <div class="form-card">
+        <h1>Cadastro de Chave PIX</h1>
+        <p>Preencha seus dados bancários corretamente.</p>
+
+        <form method="POST" action="{{ url_for('form_bancario_enviar') }}" id="formPix">
+            <!-- NOME -->
+            <label for="nome">Nome Completo</label>
+            <input type="text" id="nome" name="nome" required placeholder="Digite seu nome completo">
+
+            <!-- CPF -->
+            <label for="cpf">CPF</label>
+            <input type="text" id="cpf" name="cpf" required placeholder="Digite seu CPF">
+
+            <!-- CNPJ -->
+            <label for="cnpj">CNPJ</label>
+            <input type="text" id="cnpj" name="cnpj" required placeholder="00.000.000/0000-00">
+
+            <!-- PRAÇA -->
+            <label for="praca">Praça</label>
+            <select id="praca" name="praca" required>
+                <option value="">Selecione a praça...</option>
+                <option value="Rio Barra">Rio Barra</option>
+                <option value="Rio Zona Sul">Rio Zona Sul</option>
+                <option value="Rio Campo Grande & Santa Cruz">Rio Campo Grande & Santa Cruz</option>
+                <option value="Rio Madureira">Rio Madureira</option>
+            </select>
+
+            <!-- TIPO DE CHAVE PIX -->
+            <label for="tipo_chave_pix">Tipo de Chave PIX</label>
+            <select id="tipo_chave_pix" name="tipo_chave_pix" required>
+                <option value="">Selecione o tipo...</option>
+                <option value="EMAIL">E-mail</option>
+                <option value="TELEFONE">Telefone</option>
+                <option value="CNPJ">CNPJ</option>
+                <option value="ALEATORIA">Chave Aleatória</option>
+            </select>
+
+            <!-- CHAVE PIX -->
+            <label for="chave_pix">Chave PIX</label>
+            <input type="text" id="chave_pix" name="chave_pix" required placeholder="Digite sua chave PIX">
+
+            <!-- AVALIAÇÃO DE ATENDIMENTO -->
+            <label for="avaliacao">Avaliação de Atendimento</label>
+            <div class="avaliacao-container">
+                <div class="estrelas">
+                    <input type="radio" id="estrela1" name="avaliacao" value="1" required>
+                    <label for="estrela1" class="estrela" data-value="1">⭐</label>
+                    <input type="radio" id="estrela2" name="avaliacao" value="2" required>
+                    <label for="estrela2" class="estrela" data-value="2">⭐</label>
+                    <input type="radio" id="estrela3" name="avaliacao" value="3" required>
+                    <label for="estrela3" class="estrela" data-value="3">⭐</label>
+                    <input type="radio" id="estrela4" name="avaliacao" value="4" required>
+                    <label for="estrela4" class="estrela" data-value="4">⭐</label>
+                    <input type="radio" id="estrela5" name="avaliacao" value="5" required>
+                    <label for="estrela5" class="estrela" data-value="5">⭐</label>
+                </div>
+                <small class="avaliacao-texto">Selecione uma avaliação</small>
+            </div>
+
+            <button type="submit" class="btn-enviar">Enviar</button>
+        </form>
+    </div>
+</div>
+
+<!-- ======================================================
+     MODAL UNIFICADO (SUCESSO / ERRO)
+====================================================== -->
+{% if modal %}
+<div class="modal-overlay">
+    <div class="modal-card">
+        {% if modal.type == "erro_chave" %}
+            <h1 style="color:#e74c3c;">❌ Chave PIX Já Utilizada</h1>
+            <p>A chave <strong>{{ modal.chave }}</strong> já pertence ao entregador:</p>
+            <h2>{{ modal.nome }}</h2>
+
+        {% elif modal.type == "sucesso" %}
+            <h1 style="color:#2ecc71;">✔ Sucesso!</h1>
+            <p>Sua chave PIX foi enviada, obrigado!</p>
+        
+        {% elif modal.type == "erro_tipo" %}
+            <h1 style="color:#e74c3c;">❌ Tipo de Chave Inválido</h1>
+            <p>{{ modal.mensagem }}</p>
+        
+        {% elif modal.type == "erro_duplicado" %}
+            <h1 style="color:#e74c3c;">❌ Dados Já Cadastrados</h1>
+            <p>{{ modal.mensagem }}</p>
+        {% endif %}
+
+        <a href="/form-bancario" class="btn-fechar">Fechar</a>
+    </div>
+</div>
+{% endif %}
+
+<script>
+// Validação do tipo de chave PIX
+document.getElementById('formPix').addEventListener('submit', function(e) {
+    const tipoChave = document.getElementById('tipo_chave_pix').value;
+    
+    if (tipoChave === 'CPF') {
+        e.preventDefault();
+        alert('CPF não pode ser usado como tipo de chave PIX. Por favor, selecione outro tipo.');
+        return false;
+    }
+});
+
+// Atualizar placeholder da chave PIX baseado no tipo selecionado
+document.getElementById('tipo_chave_pix').addEventListener('change', function() {
+    const chaveInput = document.getElementById('chave_pix');
+    const tipo = this.value;
+    
+    const placeholders = {
+        'EMAIL': 'exemplo@email.com',
+        'TELEFONE': '(00) 00000-0000',
+        'CNPJ': '00.000.000/0000-00',
+        'ALEATORIA': 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+    };
+    
+    chaveInput.placeholder = placeholders[tipo] || 'Digite sua chave PIX';
+});
+
+// Feedback visual para avaliação
+const estrelasInputs = document.querySelectorAll('.estrelas input[type="radio"]');
+const estrelasLabels = document.querySelectorAll('.estrelas label.estrela');
+const avaliacaoTexto = document.querySelector('.avaliacao-texto');
+
+function atualizarEstrelas() {
+    const selecionado = document.querySelector('.estrelas input[type="radio"]:checked');
+    
+    // Remover todas as classes ativas
+    estrelasLabels.forEach(label => {
+        label.classList.remove('ativa', 'hover-ativa');
+    });
+    
+    if (selecionado) {
+        const valor = parseInt(selecionado.value);
+        const textos = {
+            1: 'Péssimo',
+            2: 'Ruim',
+            3: 'Regular',
+            4: 'Bom',
+            5: 'Excelente'
+        };
+        avaliacaoTexto.textContent = textos[valor] || 'Selecione uma avaliação';
+        
+        // Adicionar classe ativa nas estrelas até o valor selecionado
+        estrelasLabels.forEach((label, index) => {
+            if (index < valor) {
+                label.classList.add('ativa');
+            }
+        });
+    } else {
+        avaliacaoTexto.textContent = 'Selecione uma avaliação';
+    }
+}
+
+// Evento de mudança nos inputs
+estrelasInputs.forEach(input => {
+    input.addEventListener('change', atualizarEstrelas);
+});
+
+// Efeito hover
+estrelasLabels.forEach((label, index) => {
+    label.addEventListener('mouseenter', function() {
+        // Remover hover anterior
+        estrelasLabels.forEach(l => l.classList.remove('hover-ativa'));
+        
+        // Adicionar hover nas estrelas até esta
+        for (let i = 0; i <= index; i++) {
+            estrelasLabels[i].classList.add('hover-ativa');
+        }
+    });
+    
+    label.addEventListener('mouseleave', function() {
+        // Remover hover ao sair
+        estrelasLabels.forEach(l => l.classList.remove('hover-ativa'));
+    });
+});
+
+// Inicializar: garantir que todas começam cinzas
+window.addEventListener('DOMContentLoaded', function() {
+    // Garantir que nenhuma estrela tem classe ativa no início
+    estrelasLabels.forEach(label => {
+        label.classList.remove('ativa', 'hover-ativa');
+    });
+    avaliacaoTexto.textContent = 'Selecione uma avaliação';
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Chaves PIX — Administração{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pix/pix_admin.css') }}">
+
+<style>
+    .badge-alerta {
+        background: #e74c3c;
+        color: #fff;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .badge-pendente {
+        background: #f1c40f;
+        color: #000;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .texto-cinza {
+        color: #999;
+        font-style: italic;
+    }
+    span[title="Entregador não cadastrado ainda"] {
+        cursor: help;
+        border-bottom: 1px dotted #999;
+    }
+    .link-cadastrar {
+        color: #3498db;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+    .link-cadastrar:hover {
+        color: #2980b9;
+    }
+    .tabela td:nth-child(2),
+    .tabela td:nth-child(4) {
+        white-space: nowrap;
+    }
+    .tabela td:nth-child(4) {
+        max-width: 200px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pix-admin-page">
+    <!-- FLASH MESSAGES -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        {% if category in ['pix_success','pix_error','success','error'] %}
+          <div class="alert-flash inline {{ 'success' if category in ['pix_success','success'] else 'error' }}">
+            {{ message }}
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="pix-header">
+      <div>
+        <h1>Chaves PIX — Administração</h1>
+        <p>Monitore as solicitações enviadas e faça o pareamento com os entregadores.</p>
+      </div>
+      <div class="header-actions">
+        <a href="{{ url_for('admin_bancario_exportar') }}" class="btn-exportar">
+          <i class="fa-solid fa-file-arrow-down"></i>
+          Exportar CSV
+        </a>
+      </div>
+    </div>
+
+    <!-- FILTROS -->
+    <form method="GET" class="pix-filters">
+        <div class="filter-field">
+            <label>Tipo</label>
+            <select name="tipo">
+                <option value="">Todos os Tipos</option>
+                <option value="EMAIL" {% if filtro_tipo=='EMAIL' %}selected{% endif %}>Email</option>
+                <option value="CPF" {% if filtro_tipo=='CPF' %}selected{% endif %}>CPF</option>
+                <option value="TELEFONE" {% if filtro_tipo=='TELEFONE' %}selected{% endif %}>Telefone</option>
+                <option value="ALEATORIA" {% if filtro_tipo=='ALEATORIA' %}selected{% endif %}>Aleatória</option>
+                <option value="CNPJ" {% if filtro_tipo=='CNPJ' %}selected{% endif %}>CNPJ</option>
+            </select>
+        </div>
+
+        <div class="filter-field">
+            <label>Praça</label>
+            <select name="praca">
+                <option value="">Todas Praças</option>
+                {% for p in pracas %}
+                    <option value="{{ p }}" {% if filtro_praca==p %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="filter-field">
+            <label>Data</label>
+            <input type="date" name="data" value="{{ filtro_data }}">
+        </div>
+
+        <label class="switch-pill">
+            <input type="checkbox" name="ultimas" value="1"
+                   {% if filtro_ultimas=='1' %}checked{% endif %}>
+            <span>Última chave por entregador</span>
+        </label>
+
+        <div class="filter-actions">
+            <button class="btn-filtrar" type="submit">
+              <i class="fa-solid fa-filter"></i>
+              Aplicar filtros
+            </button>
+        </div>
+    </form>
+
+    <div class="pix-table-card">
+      <table class="pix-table">
+          <thead>
+          <tr>
+              <th>Status</th>
+              <th>Nome</th>
+              <th>CPF</th>
+              <th>CNPJ</th>
+              <th>Praça</th>
+              <th>Tipo</th>
+              <th>Chave PIX</th>
+              <th>Data</th>
+              <th>Ações</th>
+          </tr>
+          </thead>
+
+          <tbody>
+          {% for r in registros %}
+              <tr>
+
+                  <!-- STATUS -->
+                  <td>
+                      {% if r.id_da_pessoa_entregadora %}
+                          <span class="status-badge aprovado">Cadastrado</span>
+                      {% elif r.status and r.status.lower() == 'aprovado' %}
+                          <span class="status-badge aprovado">Aprovado</span>
+                      {% else %}
+                          <span class="status-badge pendente">Pendente</span>
+                      {% endif %}
+                  </td>
+
+                  <!-- NOME -->
+                  <td>
+                  {% if r.recebedor %}
+                      {{ r.recebedor }}
+                  {% elif r.h_nome or r.cpf %}
+                      <span class="nome-pendente" title="Dados enviados pelo formulário bancário">
+                          {{ r.h_nome or '—' }}
+                      </span>
+                  {% else %}
+                      <span title="Entregador não cadastrado ainda" class="texto-cinza">—</span>
+                  {% endif %}
+                  </td>
+
+                  <!-- CPF -->
+                  <td>{{ r.cpf or "—" }}</td>
+
+                  <!-- CNPJ -->
+                  <td>{{ r.cnpj or "—" }}</td>
+
+                  <!-- PRAÇA -->
+                  <td>
+                      {% if r.h_praca %}
+                          {{ r.h_praca }}
+                      {% elif r.subpraca %}
+                          {% if r.subpraca in ["Barra Centro","Recreio","Taquara","Jacarepaguá","Freguesia"] %}
+                              RIO BARRA
+                          {% elif r.subpraca in ["Centro ZS","Ipanema","Copacabana","Botafogo","Vila Isabel","São Cristóvão"] %}
+                              RIO ZONA SUL
+                          {% elif r.subpraca in ["Penha","Irajá","Rocha Miranda","Realengo"] %}
+                              RIO MADUREIRA
+                          {% elif r.subpraca in ["Centro CG","Monteiro","Santa Cruz"] %}
+                              RIO CAMPO GRANDE
+                          {% else %}
+                              Indefinido
+                          {% endif %}
+                      {% else %}
+                          —
+                      {% endif %}
+                  </td>
+
+                  <td>{{ r.tipo_de_chave_pix }}</td>
+                  <td>{{ r.chave_pix }}</td>
+                  <td>{{ r.data_registro }}</td>
+                  
+                  <!-- AÇÕES -->
+                  <td>
+                      <button class="btn-excluir" onclick="confirmarExclusao({{ r.id }}, {{ r.chave_pix|tojson }})" title="Excluir solicitação">
+                          <i class="fa-solid fa-trash"></i>
+                      </button>
+                  </td>
+
+              </tr>
+          {% endfor %}
+          </tbody>
+      </table>
+    </div>
+
+</div>
+
+<script>
+function confirmarExclusao(id, chave) {
+    if (confirm(`Tem certeza que deseja excluir a solicitação com a chave PIX:\n\n"${chave}"?\n\nEsta ação não pode ser desfeita!`)) {
+        // Criar formulário para enviar POST
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/bancario/excluir/${id}`;
+        form.style.display = 'none';
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+
+{% endblock %}

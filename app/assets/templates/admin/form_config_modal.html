@@ -1,0 +1,219 @@
+<style>
+    .config-modal-body .page-wrapper {
+      padding: 0;
+      max-width: 100%;
+      margin: 0;
+    }
+    .config-modal-body .header-area {
+      display: none;
+    }
+  
+    /* GRID PRINCIPAL */
+    .config-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+  
+    @media (max-width: 768px) {
+      .config-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin/form_config.css') }}">
+  
+  <div class="page-wrapper">
+  
+      <div class="config-grid">
+  
+          <!-- ======================================== -->
+          <!--   COLUNA ESQUERDA — STATUS + MANUAL     -->
+          <!-- ======================================== -->
+          <div>
+  
+              <!-- STATUS ATUAL -->
+              <div class="status-card">
+                  <div class="status-header">
+                      <div class="status-icon-wrapper">
+                          <i class="fa-solid fa-circle-info"></i>
+                      </div>
+                      <div>
+                          <h2>Status Atual</h2>
+                          <p class="status-subtitle">Estado atual do formulário</p>
+                      </div>
+                  </div>
+  
+                  <div class="status-badge-container">
+                      {% if cfg.is_open %}
+                          <div class="status-badge aberto">
+                              <i class="fa-solid fa-check-circle"></i>
+                              <span>ABERTO</span>
+                          </div>
+                      {% else %}
+                          <div class="status-badge fechado">
+                              <i class="fa-solid fa-lock"></i>
+                              <span>FECHADO</span>
+                          </div>
+                      {% endif %}
+                  </div>
+  
+                  <div class="status-infos">
+                      <div class="status-info-item">
+                          <i class="fa-solid fa-calendar-plus"></i>
+                          <div>
+                            <span class="info-label">Abertura Programada</span>
+
+                            {% if cfg.scheduled_open %}
+                                <span class="info-value">{{ cfg.scheduled_open }}</span>
+                            {% elif cfg.auto_mode == 1 %}
+                                <span class="info-value">{{ cfg.auto_open_time }} (automático)</span>
+                            {% else %}
+                                <span class="info-value">Não agendado</span>
+                            {% endif %}
+                            
+                          </div>
+                      </div>
+  
+                      <div class="status-info-item">
+                          <i class="fa-solid fa-calendar-minus"></i>
+                          <div>
+                            <span class="info-label">Fechamento Programado</span>
+
+                            {% if cfg.scheduled_close %}
+                                <span class="info-value">{{ cfg.scheduled_close }}</span>
+                            {% elif cfg.auto_mode == 1 %}
+                                <span class="info-value">{{ cfg.auto_close_time }} (automático)</span>
+                            {% else %}
+                                <span class="info-value">Não agendado</span>
+                            {% endif %}
+                            
+                          </div>
+                      </div>
+                  </div>
+              </div>
+  
+              <!-- AÇÕES MANUAIS -->
+              <div class="card">
+                  <div class="card-header">
+                      <div class="card-icon-wrapper">
+                          <i class="fa-solid fa-bolt"></i>
+                      </div>
+                      <div>
+                          <h2>Ações Rápidas</h2>
+                          <p class="card-subtitle">Controle imediato</p>
+                      </div>
+                  </div>
+  
+                  <div class="action-buttons-group">
+  
+                      <form action="{{ url_for('admin_forms_open') }}" method="POST" class="form-ajax">
+                          <button class="btn-action btn-abrir">
+                              <i class="fa-solid fa-unlock"></i> Abrir Agora
+                          </button>
+                      </form>
+  
+                      <form action="{{ url_for('admin_forms_close') }}" method="POST" class="form-ajax">
+                          <button class="btn-action btn-fechar">
+                              <i class="fa-solid fa-lock"></i> Fechar Agora
+                          </button>
+                      </form>
+  
+                  </div>
+              </div>
+  
+          </div>
+  
+          <!-- ======================================== -->
+          <!--   COLUNA DIREITA — AUTOMÁTICO           -->
+          <!-- ======================================== -->
+          <div>
+  
+              <div class="card">
+                  <div class="card-header">
+                      <div class="card-icon-wrapper">
+                          <i class="fa-solid fa-rotate"></i>
+                      </div>
+                      <div>
+                          <h2>Horário Automático Diário</h2>
+                          <p class="card-subtitle">Configure o automático</p>
+                      </div>
+                  </div>
+  
+                  <form action="{{ url_for('admin_forms_auto') }}" method="POST" class="form-ajax">
+  
+                      <div class="form-group">
+                          <label><i class="fa-solid fa-power-off"></i> Modo Automático</label>
+                          <select name="auto_mode" class="form-select">
+                              <option value="1" {% if cfg.auto_mode == 1 %}selected{% endif %}>Ativado</option>
+                              <option value="0" {% if cfg.auto_mode == 0 %}selected{% endif %}>Desativado</option>
+                          </select>
+                      </div>
+  
+                      <div class="form-row">
+                          <div class="form-group">
+                              <label><i class="fa-solid fa-sun"></i> Abrir às</label>
+                              <input type="time" name="auto_open_time" value="{{ cfg.auto_open_time or '' }}" class="form-input">
+                          </div>
+  
+                          <div class="form-group">
+                              <label><i class="fa-solid fa-moon"></i> Fechar às</label>
+                              <input type="time" name="auto_close_time" value="{{ cfg.auto_close_time or '' }}" class="form-input">
+                          </div>
+                      </div>
+  
+                      <div class="form-group">
+                          <label><i class="fa-solid fa-calendar-week"></i> Dias Ativos</label>
+  
+                          <div class="dias-container">
+                              {% set dias_map = {
+                                  '1': 'Segunda', '2': 'Terça', '3': 'Quarta',
+                                  '4': 'Quinta', '5': 'Sexta', '6': 'Sábado', '0': 'Domingo'
+                              } %}
+  
+                              {% set ativos = (cfg.days_enabled or '').split(',') %}
+  
+                              {% for dia, nome in dias_map.items() %}
+                              <label class="dia-item {% if dia in ativos %}checked{% endif %}">
+                                  <input type="checkbox" name="days_enabled" value="{{ dia }}" {% if dia in ativos %}checked{% endif %}>
+                                  <span class="dia-checkbox-custom"></span>
+                                  <span class="dia-label">{{ nome }}</span>
+                              </label>
+                              {% endfor %}
+                          </div>
+                      </div>
+  
+                      <button type="submit" class="btn-primary">
+                          <i class="fa-solid fa-floppy-disk"></i> Salvar Configurações
+                      </button>
+  
+                  </form>
+  
+              </div>
+  
+          </div>
+  
+      </div>
+  </div>
+  
+  <!-- =============== AJAX PARA NÃO RECARREGAR =============== -->
+  <script>
+  document.querySelectorAll(".form-ajax").forEach(form => {
+      form.addEventListener("submit", async e => {
+          e.preventDefault();
+          const resp = await fetch(form.action, { method: "POST", body: new FormData(form) });
+          atualizarModalConfig();
+      });
+  });
+  
+    async function atualizarModalConfig() {
+        const resp = await fetch("/adiantamento/admin/forms", {
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+        const html = await resp.text();
+        document.querySelector(".config-modal-body").innerHTML = html;
+    }
+
+  </script>
+  

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitação já enviada - Adiantamento</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adiantamento/form_adiantamento.css') }}">
+</head>
+<body>
+
+<div class="form-container">
+    <div class="modal-card">
+        <div class="icon-error">⚠️</div>
+        <h1 style="color:#e74c3c;">Solicitação já realizada</h1>
+        <p>Olá <strong>{{ nome }}</strong>! Já identificamos uma solicitação hoje com o CPF <strong>{{ cpf }}</strong>.</p>
+        <p>Por segurança, apenas uma solicitação por dia é permitida.</p>
+        <a href="{{ url_for('formulario') }}" class="btn-fechar">Voltar ao formulário</a>
+    </div>
+</div>
+
+</body>
+</html>

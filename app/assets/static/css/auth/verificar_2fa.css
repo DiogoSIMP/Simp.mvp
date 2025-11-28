@@ -1,0 +1,76 @@
+/* ===== INFO BOX ===== */
+.info-box {
+  background: var(--primary-soft);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+  text-align: center;
+}
+
+.info-box i {
+  font-size: var(--font-size-xl);
+  color: var(--primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.info-box p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.info-box strong {
+  color: var(--primary);
+  font-size: var(--font-size-base);
+  word-break: break-all;
+}
+
+/* ===== RESEND FORM ===== */
+.resend-form {
+  margin-top: var(--spacing-lg);
+  text-align: center;
+}
+
+.btn-resend {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-family: var(--font-family);
+}
+
+.btn-resend:hover {
+  background: var(--primary-soft);
+}
+
+/* ===== HELP TEXT ===== */
+.help-text {
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border-soft);
+  text-align: center;
+}
+
+.help-text p {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: var(--spacing-xs) 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.help-text i {
+  color: var(--text-muted);
+}
+

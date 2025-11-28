@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulário Indisponível - Adiantamento</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adiantamento/form_adiantamento.css') }}">
+</head>
+<body>
+
+<div class="form-container">
+    <div class="modal-card">
+        <div class="icon-error">🚫</div>
+        <h1 style="color:#e74c3c;">Formulário Indisponível</h1>
+        <p>
+            O formulário de adiantamento está fechado no momento.  
+            Isso pode ocorrer por manutenção, encerramento do horário de envio ou programação automática do sistema.
+        </p>
+        <a href="{{ url_for('formulario') }}" class="btn-fechar">Atualizar Página</a>
+        <p style="margin-top: var(--spacing-lg); color: var(--text-muted); font-size: var(--font-size-xs);">
+            Caso precise de ajuda, entre em contato com nossa equipe de suporte.
+        </p>
+    </div>
+</div>
+
+</body>
+</html>

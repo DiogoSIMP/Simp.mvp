@@ -1,0 +1,29 @@
+.layout .content-container .header-area,
+.layout .content-container .header-section,
+.layout .content-container .card-table,
+.layout .content-container .filtros-container,
+.layout .content-container .filtro-card,
+.layout .content-container .filtros-form,
+.layout .content-container .tabela-area,
+.layout .content-container .table-card,
+.layout .content-container .chart-card,
+.layout .content-container .metric-card,
+.layout .content-container .upload-card,
+.layout .content-container .upload-container form,
+.layout .content-container .preview-section,
+.layout .content-container .table-wrapper,
+.layout .content-container .card,
+.layout .content-container .status-card,
+.layout .content-container .card-detalhes,
+.layout .content-container .wizard-container {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.layout .content-container .table-card table,
+.layout .content-container .tabela,
+.layout .content-container table {
+  background: transparent;
+}
+

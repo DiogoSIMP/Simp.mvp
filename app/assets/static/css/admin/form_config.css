@@ -1,0 +1,273 @@
+/* ============================================
+   CSS MINIMALISTA - CONFIGURAÇÕES
+============================================ */
+
+.page-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .config-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+}
+
+/* ============================================
+   HEADER
+============================================ */
+.header-area {
+  margin-bottom: 24px;
+}
+
+.header-area h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 6px 0;
+}
+
+.header-area p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ============================================
+   CARDS
+============================================ */
+.card,
+.status-card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.status-card {
+  border-left: 3px solid var(--primary);
+  padding-left: 20px;
+}
+
+.card h2,
+.status-card h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 12px 0;
+}
+
+.card-description {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.config-column {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================
+   STATUS
+============================================ */
+.status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.status.aberto {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.status.fechado {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.status-infos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-infos p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.status-infos strong {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ============================================
+   FORMULÁRIOS
+============================================ */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.form-group input[type="datetime-local"],
+.form-group input[type="time"],
+.form-group select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  font-family: var(--font-family);
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* ============================================
+   BOTÕES
+============================================ */
+.btn {
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+}
+
+.btn:last-child {
+  margin-bottom: 0;
+}
+
+.btn.abrir {
+  background: var(--success);
+  color: white;
+}
+
+.btn.abrir:hover {
+  background: var(--success-hover);
+}
+
+.btn.fechar {
+  background: var(--danger);
+  color: white;
+}
+
+.btn.fechar:hover {
+  background: var(--danger-hover);
+}
+
+.btn.salvar {
+  background: var(--primary);
+  color: white;
+  margin-top: 8px;
+}
+
+.btn.salvar:hover {
+  background: var(--primary-hover);
+}
+
+/* ============================================
+   DIAS DA SEMANA
+============================================ */
+.dias-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (min-width: 640px) {
+  .dias-container {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.dia-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dia-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-medium);
+}
+
+.dia-item input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.dia-item.checked {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+/* ============================================
+   RESPONSIVIDADE
+============================================ */
+@media (max-width: 640px) {
+  .page-wrapper {
+    padding: 16px;
+  }
+  
+  .card,
+  .status-card {
+    padding: 12px;
+  }
+  
+  .dias-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

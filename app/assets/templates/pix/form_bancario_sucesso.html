@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Chave PIX Cadastrada{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="success-card">
+        <h1>🎉 Cadastro Realizado!</h1>
+        <p>A chave PIX foi registrada com sucesso para:</p>
+        <h2>{{ nome }}</h2>
+
+        <a href="/form-bancario" class="btn-voltar">Cadastrar outra chave</a>
+    </div>
+</div>
+{% endblock %}

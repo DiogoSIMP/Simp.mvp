@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Detalhes do Entregador{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/entregadores/detalhes_entregador.css') }}">
+
+<div class="page-container detalhes">
+  <div class="header-section">
+    <div class="header-left">
+      <h3>Detalhes do Entregador</h3>
+      <p class="subtitle">Visualize e gerencie as informações completas do entregador</p>
+    </div>
+    <a href="{{ url_for('entregadores') }}" class="btn-voltar">← Voltar</a>
+  </div>
+
+  <div class="card-detalhes">
+    <div class="info-grid">
+      <div class="info-item"><span class="label">Nome</span><span class="valor">{{ entregador.recebedor }}</span></div>
+      <div class="info-item"><span class="label">CPF</span><span class="valor">{{ entregador.cpf or '—' }}</span></div>
+      <div class="info-item"><span class="label">CNPJ</span><span class="valor">{{ entregador.cnpj }}</span></div>
+      <div class="info-item"><span class="label">Subpraça</span><span class="valor">{{ entregador.subpraca or '—' }}</span></div>
+      <div class="info-item"><span class="label">Status</span>
+        {% if entregador.status == 'Ativo' %}
+          <span class="status ativo">ATIVO</span>
+        {% else %}
+          <span class="status inativo">INATIVO</span>
+        {% endif %}
+      </div>
+      <div class="info-item"><span class="label">Emissor</span><span class="valor">{{ entregador.emissor }}</span></div>
+      <div class="info-item"><span class="label">Tipo de Chave Pix</span><span class="valor">{{ entregador.tipo_de_chave_pix }}</span></div>
+      <div class="info-item"><span class="label">Chave Pix</span><span class="valor">{{ entregador.chave_pix }}</span></div>
+      <div class="info-item"><span class="label">E-mail</span><span class="valor">{{ entregador.email }}</span></div>
+
+    </div>
+  </div>
+
+  {% if session.get('user_role') in ['Master', 'Adm'] %}
+  <div class="action-buttons">
+    <button class="btn-azul" onclick="abrirAsideEditar()">Editar</button>
+    <button class="btn-vermelho" onclick="abrirModalExcluir()">Excluir</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- MODAL EXCLUIR -->
+<div id="modalExcluir" class="modal">
+  <div class="modal-content">
+    <h3>Confirmar Exclusão</h3>
+    <p>Deseja realmente excluir o entregador <strong>{{ entregador.recebedor }}</strong>?</p>
+    <div class="modal-actions">
+      <button class="btn-cancelar" onclick="fecharModalExcluir()">Cancelar</button>
+      <a href="{{ url_for('excluir_entregador', id_entregador=entregador.id_da_pessoa_entregadora) }}" class="btn-vermelho">Excluir</a>
+    </div>
+  </div>
+</div>
+
+<!-- ASIDE DE EDIÇÃO -->
+<div id="asideEditar" class="aside-editar">
+  <div class="aside-content">
+    <div class="aside-header">
+      <h3>Editar Entregador</h3>
+      <button class="fechar" onclick="fecharAsideEditar()">×</button>
+    </div>
+
+    <form method="POST" action="{{ url_for('editar_entregador', id_entregador=entregador.id_da_pessoa_entregadora) }}">
+      <label>Nome</label>
+      <input type="text" name="recebedor" value="{{ entregador.recebedor }}" required>
+
+      <label>CPF</label>
+      <input type="text" name="cpf" value="{{ entregador.cpf or '' }}">
+      
+      <label>E-mail</label>
+      <input type="text" name="email" value="{{ entregador.email or '' }}">
+
+      <label>CNPJ</label>
+      <input type="text" name="cnpj" value="{{ entregador.cnpj or '' }}">
+
+      <label>Subpraça</label>
+      <input type="text" name="subpraca" value="{{ entregador.subpraca or '' }}">
+
+      <label>Status</label>
+      <select name="status">
+        <option value="Ativo" {% if entregador.status == 'Ativo' %}selected{% endif %}>Ativo</option>
+        <option value="Inativo" {% if entregador.status != 'Ativo' %}selected{% endif %}>Inativo</option>
+      </select>
+
+      <label>Tipo de Chave Pix</label>
+      <input type="text" name="tipo_de_chave_pix" value="{{ entregador.tipo_de_chave_pix or '' }}">
+
+      <label>Chave Pix</label>
+      <input type="text" name="chave_pix" value="{{ entregador.chave_pix or '' }}">
+
+      <div class="aside-actions">
+        <button type="button" class="btn-cancelar" onclick="fecharAsideEditar()">Cancelar</button>
+        <button type="submit" class="btn-azul">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/detalhes_entregador.js') }}"></script>
+{% endblock %}

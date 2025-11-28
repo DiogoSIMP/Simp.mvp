@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - SIMP</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/auth/login.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <h1><i class="fa-solid fa-shield-halved"></i> SIMP</h1>
+        <p>Sistema Interno de Gestão</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-messages">
+            {% for category, message in messages %}
+              <div class="flash-message flash-{{ category }}">
+                <i class="fa-solid fa-{% if category == 'error' %}circle-exclamation{% elif category == 'success' %}circle-check{% elif category == 'warning' %}triangle-exclamation{% else %}info-circle{% endif %}"></i>
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('login') }}" class="login-form">
+        <input type="hidden" name="next" value="{{ request.args.get('next', '') }}" />
+        
+        <div class="form-group">
+          <label for="username">
+            <i class="fa-solid fa-user"></i> Usuário
+          </label>
+          <input 
+            type="text" 
+            id="username" 
+            name="username" 
+            placeholder="Digite seu usuário"
+            required 
+            autofocus
+            autocomplete="username"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="senha">
+            <i class="fa-solid fa-lock"></i> Senha
+          </label>
+          <input 
+            type="password" 
+            id="senha" 
+            name="senha" 
+            placeholder="Digite sua senha"
+            required
+            autocomplete="current-password"
+          />
+        </div>
+
+        <button type="submit" class="btn-login">
+          <i class="fa-solid fa-right-to-bracket"></i>
+          Entrar
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
+

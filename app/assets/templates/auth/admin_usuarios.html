@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Usuários - SIMP{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth/admin_usuarios.css') }}" />
+{% endblock %}
+
+{% block content %}
+<div class="admin-usuarios-wrapper">
+  <div class="admin-header">
+    <h1>Gerenciar Usuários</h1>
+    <p>Gerencie usuários internos do sistema</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-messages">
+        {% for category, message in messages %}
+          <div class="flash-message flash-{{ category }}">
+            <i class="fa-solid fa-{% if category == 'error' %}circle-exclamation{% elif category == 'success' %}circle-check{% elif category == 'warning' %}triangle-exclamation{% else %}info-circle{% endif %}"></i>
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Formulário de Criação -->
+  <div class="perfil-card">
+    <div class="card-section">
+      <h2>Criar Novo Usuário</h2>
+      
+      <form method="POST" action="{{ url_for('criar_usuario') }}" class="form-criar">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="username">Username *</label>
+            <input type="text" id="username" name="username" required placeholder="Digite o username" />
+          </div>
+          <div class="form-group">
+            <label for="email">E-mail *</label>
+            <input type="email" id="email" name="email" required placeholder="Digite o e-mail" />
+          </div>
+          <div class="form-group">
+            <label for="nome_completo">Nome Completo *</label>
+            <input type="text" id="nome_completo" name="nome_completo" required placeholder="Digite o nome completo" />
+          </div>
+          <div class="form-group">
+            <label for="senha">Senha *</label>
+            <input type="password" id="senha" name="senha" required minlength="6" placeholder="Mínimo 6 caracteres" />
+          </div>
+          <div class="form-group">
+            <label for="role">Tipo da Conta *</label>
+            <select id="role" name="role" required>
+              <option value="Operacional">Operacional</option>
+              <option value="Adm">Adm</option>
+              <option value="Master">Master</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-footer">
+          <button type="submit" class="btn-salvar">
+            <i class="fa-solid fa-plus"></i> Criar Usuário
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Lista de Usuários -->
+  <div class="perfil-card">
+    <div class="card-section">
+      <h2>Usuários Cadastrados</h2>
+      
+      {% if usuarios %}
+      <div class="usuarios-table-wrapper">
+        <table class="usuarios-table">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Username</th>
+              <th>E-mail</th>
+              <th>Tipo</th>
+              <th>Status</th>
+              <th>Último Acesso</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for usuario in usuarios %}
+            <tr>
+              <td>
+                <div class="user-info">
+                  <strong>{{ usuario.nome_completo }}</strong>
+                </div>
+              </td>
+              <td>{{ usuario.username }}</td>
+              <td>{{ usuario.email }}</td>
+              <td>
+                <span class="badge-role badge-{{ usuario.role.lower() }}">{{ usuario.role }}</span>
+              </td>
+              <td>
+                {% if usuario.ativo %}
+                  <span class="badge-status ativo">Ativo</span>
+                {% else %}
+                  <span class="badge-status inativo">Inativo</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if usuario.ultimo_acesso %}
+                  <span class="text-muted">{{ usuario.ultimo_acesso[:19]|replace('T', ' ') }}</span>
+                {% else %}
+                  <span class="text-muted">Nunca</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn-action btn-editar" onclick="abrirModalEditar({{ usuario.id }})" title="Editar usuário">
+                  <i class="fa-solid fa-edit"></i>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <i class="fa-solid fa-users"></i>
+        <p>Nenhum usuário cadastrado ainda.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Edição -->
+<div id="modalEditar" class="modal">
+  <div class="modal-overlay" onclick="fecharModalEditar()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-edit"></i> Editar Usuário</h3>
+      <button class="modal-close" onclick="fecharModalEditar()">
+        <i class="fa-solid fa-times"></i>
+      </button>
+    </div>
+    <form id="formEditar" method="POST" class="form-editar">
+      <input type="hidden" id="editUserId" name="user_id" />
+      <div class="form-group">
+        <label for="editNome">Nome Completo</label>
+        <input type="text" id="editNome" name="nome_completo" required />
+      </div>
+      <div class="form-group">
+        <label for="editEmail">E-mail</label>
+        <input type="email" id="editEmail" name="email" required />
+      </div>
+      <div class="form-group">
+        <label for="editRole">Tipo da Conta</label>
+        <select id="editRole" name="role" required>
+          <option value="Operacional">Operacional</option>
+          <option value="Adm">Adm</option>
+          <option value="Master">Master</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="editAtivo" name="ativo" />
+          <span>Usuário Ativo</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label for="editNovaSenha">Nova Senha (deixe em branco para manter)</label>
+        <input type="password" id="editNovaSenha" name="nova_senha" minlength="6" placeholder="Mínimo 6 caracteres" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const usuarios = {{ usuarios|tojson }};
+
+function abrirModalEditar(userId) {
+  const usuario = usuarios.find(u => u.id === userId);
+  if (!usuario) return;
+  
+  document.getElementById('editUserId').value = usuario.id;
+  document.getElementById('editNome').value = usuario.nome_completo;
+  document.getElementById('editEmail').value = usuario.email;
+  document.getElementById('editRole').value = usuario.role;
+  document.getElementById('editAtivo').checked = usuario.ativo === 1;
+  document.getElementById('editNovaSenha').value = '';
+  
+  // Atualizar action do form
+  document.getElementById('formEditar').action = `/admin/usuarios/${usuario.id}/editar`;
+  
+  document.getElementById('modalEditar').classList.add('ativo');
+}
+
+function fecharModalEditar() {
+  document.getElementById('modalEditar').classList.remove('ativo');
+}
+
+// Fechar modal ao clicar fora
+document.getElementById('modalEditar')?.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal')) {
+    fecharModalEditar();
+  }
+});
+</script>
+{% endblock %}
