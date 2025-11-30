@@ -140,3 +140,41 @@ FORMATO_DATA_DATETIME_LOCAL = "%Y-%m-%dT%H:%M"
 FORMATO_DATA_ARQUIVO = "%Y%m%d_%H%M%S"
 FORMATO_DATA_DIARIO = "%Y%m%d"
 
+# ===== MAPEAMENTO DE PRAÇAS E SUBPRAÇAS =====
+PRACAS = [
+    'Rio Barra',
+    'Rio Zona Sul',
+    'Rio Campo Grande & Santa Cruz',
+    'Rio Madureira'
+]
+
+SUBPRACAS_POR_PRACA = {
+    'Rio Barra': ['Barra Centro', 'Recreio', 'Taquara', 'Jacarepaguá', 'Freguesia'],
+    'Rio Zona Sul': ['Centro ZS', 'Ipanema', 'Copacabana', 'Botafogo', 'Vila Isabel', 'São Cristóvão'],
+    'Rio Campo Grande & Santa Cruz': ['Centro CG', 'Monteiro', 'Santa Cruz'],
+    'Rio Madureira': ['Penha', 'Irajá', 'Rocha Miranda', 'Realengo']
+}
+
+# Mapeamento para normalização de nomes de praças (case-insensitive)
+MAPA_PRACAS_NORMALIZACAO = {
+    'rio barra': 'Rio Barra',
+    'barra': 'Rio Barra',
+    'rio zona sul': 'Rio Zona Sul',
+    'zona sul': 'Rio Zona Sul',
+    'rio campo grande': 'Rio Campo Grande & Santa Cruz',
+    'rio campo grande & santa cruz': 'Rio Campo Grande & Santa Cruz',
+    'campo grande': 'Rio Campo Grande & Santa Cruz',
+    'rio madureira': 'Rio Madureira',
+    'madureira': 'Rio Madureira'
+}
+
+def normalizar_praca(praca):
+    """Normaliza nome de praça para formato padrão"""
+    if not praca:
+        return ''
+    return MAPA_PRACAS_NORMALIZACAO.get(praca.lower().strip(), praca)
+
+def get_subpracas(praca):
+    """Retorna lista de subpraças para uma praça"""
+    return SUBPRACAS_POR_PRACA.get(praca, [])
+

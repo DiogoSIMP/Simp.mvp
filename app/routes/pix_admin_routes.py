@@ -3,7 +3,7 @@ Rotas administrativas para gerenciamento de PIX
 """
 from flask import render_template, request, send_file, redirect, url_for
 from app.utils.auth_decorators import login_required, master_required
-from app.models.database import get_db_connection
+from app.models.database import get_db_connection, is_postgresql_connection
 from datetime import datetime
 import csv
 from app.utils.constants import (
@@ -13,36 +13,42 @@ from app.utils.constants import (
 
 
 # Queries SQL reutilizáveis
-QUERY_PIX_APROVADOS = """
+def _get_query_pix_aprovados(placeholder="?"):
+    """Retorna query com placeholders corretos"""
+    return f"""
     SELECT 
         h.id, h.chave_pix, h.tipo_de_chave_pix, h.data_registro, h.cpf as h_cpf, h.status,
         e.id_da_pessoa_entregadora, e.recebedor, e.cpf as e_cpf, e.subpraca
     FROM historico_pix h
     LEFT JOIN entregadores e 
         ON e.id_da_pessoa_entregadora = h.id_da_pessoa_entregadora
-    WHERE h.status = ?
+    WHERE h.status = {placeholder}
     ORDER BY h.data_registro DESC
 """
 
-QUERY_PIX_TODOS = """
+def _get_query_pix_todos(placeholder="?"):
+    """Retorna query com placeholders corretos"""
+    return f"""
     SELECT 
         h.id, h.chave_pix, h.tipo_de_chave_pix, h.data_registro, h.cpf as h_cpf, h.cnpj as h_cnpj, h.status,
         h.nome as h_nome, h.praca as h_praca,
         e.id_da_pessoa_entregadora, e.recebedor, e.cpf as e_cpf, e.cnpj as e_cnpj, e.subpraca
     FROM historico_pix h
     LEFT JOIN entregadores e ON e.id_da_pessoa_entregadora = h.id_da_pessoa_entregadora
-    WHERE h.status IN (?, ?)
+    WHERE h.status IN ({placeholder}, {placeholder})
         AND (h.nome IS NOT NULL AND h.nome != '' OR h.praca IS NOT NULL AND h.praca != '')
     ORDER BY h.data_registro DESC
 """
 
-QUERY_PIX_PENDENTES = """
+def _get_query_pix_pendentes(placeholder="?"):
+    """Retorna query com placeholders corretos"""
+    return f"""
     SELECT h.id, h.chave_pix, h.tipo_de_chave_pix, h.data_registro, h.cpf as h_cpf,
            e.recebedor, e.cpf as e_cpf, e.subpraca
     FROM historico_pix h
     LEFT JOIN entregadores e 
         ON e.id_da_pessoa_entregadora = h.id_da_pessoa_entregadora
-    WHERE h.status = ?
+    WHERE h.status = {placeholder}
     ORDER BY h.data_registro DESC
 """
 
@@ -89,23 +95,33 @@ def init_pix_admin_routes(app):
         filtro_data = request.args.get("data", "")
         filtro_ultimas = request.args.get("ultimas", "")
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        # Buscar tanto aprovados quanto pendentes, mas apenas os que vieram do formulário público
-        # (têm nome ou praca preenchidos)
-        cursor.execute(QUERY_PIX_TODOS, (STATUS_PIX['APROVADO'], STATUS_PIX['PENDENTE']))
-        registros_raw = cursor.fetchall()
-        conn.close()
-        
-        # Fazer JOIN por CPF em Python (já que SQLite não suporta múltiplos REPLACE aninhados)
+        from app.models.database import get_db_cursor, get_db_placeholder
+        from app.utils.db_helpers import db_connection, row_to_dict
         from app.utils.route_helpers import normalize_cpf
         
+        # Buscar tanto aprovados quanto pendentes, mas apenas os que vieram do formulário público
+        with db_connection() as conn:
+            placeholder = get_db_placeholder(conn)
+            cursor = get_db_cursor(conn)
+            query = _get_query_pix_todos(placeholder)
+            cursor.execute(query, (STATUS_PIX['APROVADO'], STATUS_PIX['PENDENTE']))
+            registros_raw = cursor.fetchall()
+        
+        # Fazer JOIN por CPF em Python (já que SQLite não suporta múltiplos REPLACE aninhados)
         # Buscar todos os entregadores para fazer match por CPF
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id_da_pessoa_entregadora, recebedor, cpf, subpraca FROM entregadores")
-        todos_entregadores = {normalize_cpf(e['cpf'] or ''): e for e in cursor.fetchall() if normalize_cpf(e['cpf'] or '')}
-        conn.close()
+        with db_connection() as conn:
+            cursor = get_db_cursor(conn)
+            cursor.execute("SELECT id_da_pessoa_entregadora, recebedor, cpf, subpraca FROM entregadores")
+            rows = cursor.fetchall()
+        
+        # Converter para dicionários
+        todos_entregadores = {}
+        for e in rows:
+            e_dict = row_to_dict(e)
+            if e_dict:
+                cpf_normalizado = normalize_cpf(e_dict.get('cpf') or '')
+                if cpf_normalizado:
+                    todos_entregadores[cpf_normalizado] = e_dict
         
         # Processar registros e fazer match por CPF
         registros = []
@@ -149,8 +165,20 @@ def init_pix_admin_routes(app):
     @app.route("/admin/bancario/exportar", methods=["GET"])
     def admin_bancario_exportar():
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(QUERY_PIX_APROVADOS, (STATUS_PIX['APROVADO'],))
+        from app.models.database import is_postgresql_connection
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        
+        query = _get_query_pix_aprovados(placeholder)
+        cursor.execute(query, (STATUS_PIX['APROVADO'],))
         registros = [dict(r) for r in cursor.fetchall()]
         conn.close()
         
@@ -182,7 +210,16 @@ def init_pix_admin_routes(app):
     @master_required
     def admin_pix_logs():
         conn = get_db_connection()
-        cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        
         cursor.execute("SELECT * FROM pix_logs ORDER BY data_hora DESC")
         logs = [dict(r) for r in cursor.fetchall()]
         conn.close()
@@ -193,13 +230,22 @@ def init_pix_admin_routes(app):
     @master_required
     def admin_pix_logs_exportar():
         conn = get_db_connection()
-        cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        
         cursor.execute("""
             SELECT cpf, chave_pix, tipo_chave, motivo, ip, user_agent, data_hora
             FROM pix_logs
             ORDER BY data_hora DESC
         """)
-        logs = cursor.fetchall()
+        logs = [dict(r) for r in cursor.fetchall()]
         conn.close()
         
         path = "pix_logs_export.csv"
@@ -217,8 +263,20 @@ def init_pix_admin_routes(app):
     @app.route("/admin/bancario/aprovacao", methods=["GET"])
     def admin_pix_aprovacao():
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(QUERY_PIX_PENDENTES, (STATUS_PIX['PENDENTE'],))
+        from app.models.database import is_postgresql_connection
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        
+        query = _get_query_pix_pendentes(placeholder)
+        cursor.execute(query, (STATUS_PIX['PENDENTE'],))
         pendentes = [dict(r) for r in cursor.fetchall()]
         conn.close()
         
@@ -231,11 +289,14 @@ def init_pix_admin_routes(app):
     @app.route("/admin/bancario/aprovar/<int:id>", methods=["POST"])
     def aprov_pix(id):
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
+        
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE historico_pix
-            SET status = ?
-            WHERE id = ?
+            SET status = {placeholder}
+            WHERE id = {placeholder}
         """, (STATUS_PIX['APROVADO'], id))
         conn.commit()
         conn.close()
@@ -247,21 +308,34 @@ def init_pix_admin_routes(app):
         from flask import flash
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        from app.models.database import is_postgresql_connection
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            import sqlite3
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
         
         # Buscar informações antes de excluir (CPF para limpar logs)
-        cursor.execute("SELECT chave_pix, cpf FROM historico_pix WHERE id = ?", (id,))
+        cursor.execute(f"SELECT chave_pix, cpf FROM historico_pix WHERE id = {placeholder}", (id,))
         registro = cursor.fetchone()
         
         if registro:
-            cpf_registro = registro['cpf']
+            if isinstance(registro, dict):
+                cpf_registro = registro.get('cpf')
+            else:
+                cpf_registro = registro[1] if len(registro) > 1 else None
             
             # Excluir o registro do historico_pix
-            cursor.execute("DELETE FROM historico_pix WHERE id = ?", (id,))
+            cursor.execute(f"DELETE FROM historico_pix WHERE id = {placeholder}", (id,))
             
             # Limpar logs do pix_logs para permitir novo envio do formulário
             if cpf_registro:
-                cursor.execute("DELETE FROM pix_logs WHERE cpf = ?", (cpf_registro,))
+                cursor.execute(f"DELETE FROM pix_logs WHERE cpf = {placeholder}", (cpf_registro,))
             
             conn.commit()
             flash(f"Chave PIX excluída com sucesso! O entregador poderá usar o formulário novamente.", "pix_success")

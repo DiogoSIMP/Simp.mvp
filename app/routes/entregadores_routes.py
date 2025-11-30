@@ -26,11 +26,11 @@ from app.utils.route_helpers import (
 # Mapeamento de campos do formulário
 CAMPOS_FORM_ENTREGADOR = [
     'id_da_pessoa_entregadora', 'recebedor', 'cpf', 'email', 'cnpj',
-    'subpraca', 'emissor', 'status', 'tipo_de_chave_pix', 'chave_pix'
+    'praca', 'subpraca', 'emissor', 'status', 'tipo_de_chave_pix', 'chave_pix'
 ]
 
 CAMPOS_FORM_ENTREGADOR_EDICAO = [
-    'recebedor', 'cpf', 'cnpj', 'email', 'subpraca',
+    'recebedor', 'cpf', 'cnpj', 'email', 'praca', 'subpraca',
     'emissor', 'status', 'tipo_de_chave_pix', 'chave_pix'
 ]
 
@@ -65,7 +65,13 @@ def init_entregadores_routes(app):
                 get_flash_message('entregador', 'erro_carregar', error=str(e)),
                 'entregador_error'
             )
-            return render_template(TEMPLATES_ENTREGADORES['index'], entregadores=[])
+            page = get_page_from_request()
+            return render_template(
+                TEMPLATES_ENTREGADORES['index'], 
+                entregadores=[],
+                page=page,
+                total_pages=1
+            )
     
     @app.route('/entregador/<string:id_entregador>/detalhes-json', methods=['GET'])
     def detalhes_entregador_json(id_entregador):

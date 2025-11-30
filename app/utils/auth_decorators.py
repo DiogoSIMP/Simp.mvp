@@ -3,6 +3,7 @@ Decoradores para proteção de rotas baseado em roles
 """
 from functools import wraps
 from flask import session, redirect, url_for, flash, request
+from datetime import datetime, timedelta
 
 
 def login_required(f):
@@ -23,6 +24,27 @@ def login_required(f):
             session.clear()
             flash('Sessão expirada. Faça login novamente.', 'warning')
             return redirect(url_for('login', next=request.url))
+        
+        # Verificar inatividade (3 horas)
+        last_activity = session.get('last_activity')
+        if last_activity:
+            try:
+                last_activity_time = datetime.fromisoformat(last_activity)
+                time_since_activity = datetime.now() - last_activity_time
+                
+                # Se passou mais de 3 horas, fazer logout
+                if time_since_activity > timedelta(hours=3):
+                    session.clear()
+                    flash('Sua sessão expirou por inatividade. Faça login novamente.', 'warning')
+                    return redirect(url_for('login', next=request.url))
+            except (ValueError, TypeError):
+                # Se houver erro ao parsear, considerar como expirado
+                session.clear()
+                flash('Sessão expirada. Faça login novamente.', 'warning')
+                return redirect(url_for('login', next=request.url))
+        
+        # Atualizar timestamp de última atividade
+        session['last_activity'] = datetime.now().isoformat()
         
         return f(*args, **kwargs)
     return decorated_function

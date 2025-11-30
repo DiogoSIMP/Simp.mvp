@@ -15,11 +15,14 @@
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div class="flash-messages">
+      <div class="flash-messages" id="flashMessages">
         {% for category, message in messages %}
           <div class="flash-message flash-{{ category }}">
             <i class="fa-solid fa-{% if category == 'error' %}circle-exclamation{% elif category == 'success' %}circle-check{% elif category == 'warning' %}triangle-exclamation{% else %}info-circle{% endif %}"></i>
             <span>{{ message }}</span>
+            <button class="flash-close" onclick="fecharFlashMessages()" title="Fechar">
+              <i class="fa-solid fa-times"></i>
+            </button>
           </div>
         {% endfor %}
       </div>
@@ -182,9 +185,15 @@
 <script>
 const usuarios = {{ usuarios|tojson }};
 
+// Flag para rastrear se houve submit do formulário
+let formSubmited = false;
+
 function abrirModalEditar(userId) {
   const usuario = usuarios.find(u => u.id === userId);
   if (!usuario) return;
+  
+  // Resetar flag ao abrir modal
+  formSubmited = false;
   
   document.getElementById('editUserId').value = usuario.id;
   document.getElementById('editNome').value = usuario.nome_completo;
@@ -200,8 +209,28 @@ function abrirModalEditar(userId) {
 }
 
 function fecharModalEditar() {
+  // Se fechou sem fazer submit, ocultar mensagens flash
+  if (!formSubmited) {
+    fecharFlashMessages();
+  }
   document.getElementById('modalEditar').classList.remove('ativo');
 }
+
+function fecharFlashMessages() {
+  const flashMessages = document.getElementById('flashMessages');
+  if (flashMessages) {
+    flashMessages.style.opacity = '0';
+    flashMessages.style.transition = 'opacity 0.3s';
+    setTimeout(() => {
+      flashMessages.style.display = 'none';
+    }, 300);
+  }
+}
+
+// Marcar que o form foi submetido
+document.getElementById('formEditar')?.addEventListener('submit', () => {
+  formSubmited = true;
+});
 
 // Fechar modal ao clicar fora
 document.getElementById('modalEditar')?.addEventListener('click', (e) => {
@@ -209,5 +238,17 @@ document.getElementById('modalEditar')?.addEventListener('click', (e) => {
     fecharModalEditar();
   }
 });
+
+// Ocultar mensagens flash após 5 segundos (opcional)
+setTimeout(() => {
+  const flashMessages = document.querySelector('.flash-messages');
+  if (flashMessages) {
+    flashMessages.style.opacity = '0';
+    flashMessages.style.transition = 'opacity 0.5s';
+    setTimeout(() => {
+      flashMessages.style.display = 'none';
+    }, 500);
+  }
+}, 5000);
 </script>
 {% endblock %}

@@ -1,11 +1,25 @@
 import os
 from dotenv import load_dotenv
 
+# Carregar variáveis de ambiente
+load_dotenv()
+
 class Config:
     # ======== CONFIGURAÇÕES BÁSICAS ========
-    SECRET_KEY = 'sua_chave_secreta_aqui'
-    DATABASE = 'Drives_abjp.db'
-    DEBUG = True
+    SECRET_KEY = os.getenv('SECRET_KEY', 'sua_chave_secreta_aqui')
+    DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+    
+    # ======== CONFIGURAÇÕES DO BANCO DE DADOS ========
+    # PostgreSQL (produção)
+    DB_HOST = os.getenv('DB_HOST', 'localhost')
+    DB_PORT = os.getenv('DB_PORT', '5432')
+    DB_NAME = os.getenv('DB_NAME', 'simp_db')
+    DB_USER = os.getenv('DB_USER', 'postgres')
+    DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+    
+    # SQLite (fallback para desenvolvimento)
+    USE_POSTGRESQL = os.getenv('USE_POSTGRESQL', 'True').lower() == 'true'
+    DATABASE = 'Drives_abjp.db'  # Mantido para compatibilidade
 
     # ======== CAMINHOS DE PASTAS PRINCIPAIS ========
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))

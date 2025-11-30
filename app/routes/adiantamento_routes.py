@@ -46,27 +46,11 @@ from app.utils.route_helpers import (
 
 
 def _salvar_resposta_json(resposta):
-    """Salva as respostas em JSON diário"""
-    base_dir = "respostas"
-    data_hoje = datetime.now().strftime(FORMATO_DATA_ISO)
-    pasta_dia = os.path.join(base_dir, data_hoje)
-    os.makedirs(pasta_dia, exist_ok=True)
-    
-    caminho_arquivo = os.path.join(pasta_dia, ARQUIVO_SOLICITACOES)
-    
-    if os.path.exists(caminho_arquivo):
-        with open(caminho_arquivo, "r", encoding="utf-8") as f:
-            try:
-                dados = json.load(f)
-            except json.JSONDecodeError:
-                dados = []
-    else:
-        dados = []
-    
-    dados.append(resposta)
-    
-    with open(caminho_arquivo, "w", encoding="utf-8") as f:
-        json.dump(dados, f, ensure_ascii=False, indent=4)
+    """Salva as respostas no banco de dados (JSON removido - usando apenas PostgreSQL)"""
+    # As respostas já são salvas na tabela solicitacoes_adiantamento
+    # Esta função agora é apenas um placeholder para compatibilidade
+    # O salvamento real acontece em criar_solicitacao_adiantamento()
+    pass
 
 
 def _aplicar_filtros_solicitacoes(solicitacoes, busca, filtro_dia, filtro_mes, filtro_cpf_status, filtro_sub):
@@ -229,7 +213,14 @@ def init_adiantamento_routes(app):
         filtro_sub = (request.args.get('sub') or '').strip()
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        from app.models.database import is_postgresql_connection
+        is_postgresql = is_postgresql_connection(conn)
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
         
         # Buscar arquivos CSV enviados (com nome e data de upload)
         pasta_uploads = get_week_folder(Config.UPLOAD_FOLDER)
@@ -274,36 +265,75 @@ def init_adiantamento_routes(app):
         arquivos_csv_info.sort(key=lambda x: (x['data_upload'], x['hora_upload']), reverse=True)
         
         # Manter compatibilidade: também buscar dias disponíveis das solicitações
-        cursor.execute("""
-            SELECT DISTINCT DATE(data_envio) as dia
-            FROM solicitacoes_adiantamento
-            ORDER BY dia DESC
-        """)
-        dias_disponiveis = [r["dia"] for r in cursor.fetchall()]
+        # Verificar se a coluna data_envio existe
+        try:
+            if is_postgresql:
+                cursor.execute("""
+                    SELECT DISTINCT DATE(data_envio) as dia
+                    FROM solicitacoes_adiantamento
+                    WHERE data_envio IS NOT NULL
+                    ORDER BY dia DESC
+                """)
+            else:
+                cursor.execute("""
+                    SELECT DISTINCT DATE(data_envio) as dia
+                    FROM solicitacoes_adiantamento
+                    ORDER BY dia DESC
+                """)
+            dias_disponiveis = [r["dia"] for r in cursor.fetchall()]
+        except Exception:
+            # Se a coluna não existir, usar lista vazia
+            dias_disponiveis = []
         
         # Buscar todas as solicitações
         # Normalização mais robusta de CPF: remove todos os caracteres não numéricos
-        cursor.execute("""
-            SELECT 
-                s.id, s.email, s.nome, s.cpf,
-                CASE 
-                    WHEN e.id_da_pessoa_entregadora IS NOT NULL THEN 1 ELSE 0
-                END AS cpf_bate,
-                s.praca, s.valor_informado, s.concorda, s.data_envio,
-                e.recebedor AS recebedor_base,
-                e.id_da_pessoa_entregadora
-            FROM solicitacoes_adiantamento s
-            LEFT JOIN entregadores e 
-                ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                    LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
-                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
-                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                    LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
-                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
-            ORDER BY s.data_envio DESC
-        """)
+        try:
+            if is_postgresql:
+                cursor.execute("""
+                    SELECT 
+                        s.id, s.email, s.nome, s.cpf,
+                        CASE 
+                            WHEN e.id_da_pessoa_entregadora IS NOT NULL THEN 1 ELSE 0
+                        END AS cpf_bate,
+                        s.praca, s.valor_informado, s.concorda, s.data_envio,
+                        e.recebedor AS recebedor_base,
+                        e.id_da_pessoa_entregadora
+                    FROM solicitacoes_adiantamento s
+                    LEFT JOIN entregadores e 
+                        ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                    ORDER BY s.data_envio DESC NULLS LAST
+                """)
+            else:
+                cursor.execute("""
+                    SELECT 
+                        s.id, s.email, s.nome, s.cpf,
+                        CASE 
+                            WHEN e.id_da_pessoa_entregadora IS NOT NULL THEN 1 ELSE 0
+                        END AS cpf_bate,
+                        s.praca, s.valor_informado, s.concorda, s.data_envio,
+                        e.recebedor AS recebedor_base,
+                        e.id_da_pessoa_entregadora
+                    FROM solicitacoes_adiantamento s
+                    LEFT JOIN entregadores e 
+                        ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                    ORDER BY s.data_envio DESC
+                """)
+            solicitacoes = [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            # Se houver erro (coluna não existe), buscar sem data_envio
+            print(f"⚠️ Aviso ao buscar solicitações: {e}")
+            solicitacoes = []
         
-        solicitacoes = [dict(r) for r in cursor.fetchall()]
         conn.close()
         
         subpracas = sorted({s.get('praca') for s in solicitacoes if s.get('praca')})
@@ -361,16 +391,31 @@ def init_adiantamento_routes(app):
         email_limpo = email.strip().lower()
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        from app.models.database import is_postgresql_connection
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
         
         # Validar se o entregador está cadastrado com CPF e email
         # Buscar todos os entregadores e normalizar CPF em Python
-        cursor.execute("SELECT id_da_pessoa_entregadora, recebedor, cpf, email FROM entregadores WHERE cpf IS NOT NULL AND cpf != ''")
+        # No PostgreSQL, usar LENGTH para strings vazias
+        if is_postgresql:
+            cursor.execute("SELECT id_da_pessoa_entregadora, recebedor, cpf, email FROM entregadores WHERE cpf IS NOT NULL AND LENGTH(TRIM(cpf)) > 0")
+        else:
+            cursor.execute("SELECT id_da_pessoa_entregadora, recebedor, cpf, email FROM entregadores WHERE cpf IS NOT NULL AND cpf != ''")
         todos_entregadores = cursor.fetchall()
         
         entregador = None
         for e in todos_entregadores:
-            cpf_entregador_limpo = normalize_cpf(e['cpf'] or '')
+            if isinstance(e, dict):
+                cpf_entregador_limpo = normalize_cpf(e.get('cpf') or '')
+            else:
+                cpf_entregador_limpo = normalize_cpf(e[2] or '')  # cpf está na posição 2
             if cpf_entregador_limpo == cpf_limpo:
                 entregador = e
                 break
@@ -383,7 +428,11 @@ def init_adiantamento_routes(app):
             )
         
         # Verificar se o email informado corresponde ao email cadastrado
-        email_cadastrado = (entregador['email'] or '').strip().lower()
+        if isinstance(entregador, dict):
+            email_cadastrado = (entregador.get('email') or '').strip().lower()
+        else:
+            email_cadastrado = (entregador[3] or '').strip().lower()  # email está na posição 3
+        
         if email_cadastrado and email_cadastrado != email_limpo:
             conn.close()
             return render_template(
@@ -401,11 +450,16 @@ def init_adiantamento_routes(app):
         
         # Regra: apenas 1 solicitação por CPF por dia
         hoje = date.today().strftime(FORMATO_DATA_ISO)
-        cursor.execute("""
-            SELECT COUNT(*) FROM solicitacoes_adiantamento
-            WHERE cpf = ? AND DATE(data_envio) = ?
-        """, (cpf, hoje))
-        ja_existe = cursor.fetchone()[0]
+        try:
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM solicitacoes_adiantamento
+                WHERE cpf = {placeholder} AND DATE(data_envio) = {placeholder}
+            """, (cpf, hoje))
+            resultado = cursor.fetchone()
+            ja_existe = resultado[0] if resultado else 0
+        except Exception:
+            # Se a coluna data_envio não existir, permitir múltiplas solicitações
+            ja_existe = 0
         
         if ja_existe > 0:
             conn.close()
@@ -415,26 +469,59 @@ def init_adiantamento_routes(app):
                 cpf=cpf
             )
         
-        # Salvar no banco
-        data_envio = datetime.now().strftime(FORMATO_DATA_SQL)
-        cursor.execute("""
-            INSERT INTO solicitacoes_adiantamento 
-            (email, nome, cpf, praca, valor_informado, concorda, data_envio)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (email, nome, cpf, praca, valor, concorda, data_envio))
-        conn.commit()
-        conn.close()
-        
-        # Salvar também no JSON diário
-        _salvar_resposta_json({
+        # Preparar dados JSON completos
+        resposta_json = {
             "email": email,
             "nome": nome,
             "cpf": cpf,
             "praca": praca,
             "valor": valor,
             "concorda": concorda,
-            "data_envio": data_envio
-        })
+            "data_envio": datetime.now().strftime(FORMATO_DATA_SQL)
+        }
+        
+        # Salvar no banco (com JSON completo)
+        data_envio = resposta_json["data_envio"]
+        dados_json_str = json.dumps(resposta_json, ensure_ascii=False)
+        
+        # Verificar se é PostgreSQL ou SQLite
+        from app.models.database import is_postgresql_connection
+        is_postgresql = is_postgresql_connection(conn)
+        
+        try:
+            if is_postgresql:
+                cursor.execute("""
+                    INSERT INTO solicitacoes_adiantamento 
+                    (email, nome, cpf, praca, valor_informado, concorda, data_envio, dados_json)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                """, (email, nome, cpf, praca, valor, concorda, data_envio, dados_json_str))
+            else:
+                cursor.execute("""
+                    INSERT INTO solicitacoes_adiantamento 
+                    (email, nome, cpf, praca, valor_informado, concorda, data_envio, dados_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (email, nome, cpf, praca, valor, concorda, data_envio, dados_json_str))
+        except Exception as e:
+            # Se falhar (ex: coluna dados_json não existe), tentar sem dados_json
+            print(f"Erro ao inserir com dados_json, tentando sem: {e}")
+            if is_postgresql:
+                cursor.execute("""
+                    INSERT INTO solicitacoes_adiantamento 
+                    (email, nome, cpf, praca, valor_informado, concorda, data_envio)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (email, nome, cpf, praca, valor, concorda, data_envio))
+            else:
+                cursor.execute("""
+                    INSERT INTO solicitacoes_adiantamento 
+                    (email, nome, cpf, praca, valor_informado, concorda, data_envio)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (email, nome, cpf, praca, valor, concorda, data_envio))
+        
+        conn.commit()
+        conn.close()
+        
+        # Dados já salvos no banco (tabela solicitacoes_adiantamento)
+        # JSON removido - usando apenas PostgreSQL para segurança e consultas
         
         return render_template(TEMPLATES_ADIANTAMENTO['sucesso'], nome=nome)
     
@@ -471,38 +558,76 @@ def init_adiantamento_routes(app):
             data_ref = date.today()
         
         conn = get_db_connection()
-        cursor = conn.cursor()
+        from app.models.database import is_postgresql_connection
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
         
         # Se data_ref for None (arquivo específico), buscar TODAS as solicitações
         if data_ref is None:
-            cursor.execute("""
-                SELECT s.cpf, s.nome, s.praca, s.valor_informado, s.concorda, s.data_envio,
-                       e.id_da_pessoa_entregadora, e.recebedor AS recebedor_base
-                FROM solicitacoes_adiantamento s
-                LEFT JOIN entregadores e 
-                    ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
-                        '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
-                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
-                        '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
-                ORDER BY s.data_envio ASC
-            """)
+            try:
+                cursor.execute("""
+                    SELECT s.cpf, s.nome, s.praca, s.valor_informado, s.concorda, s.data_envio,
+                           e.id_da_pessoa_entregadora, e.recebedor AS recebedor_base
+                    FROM solicitacoes_adiantamento s
+                    LEFT JOIN entregadores e 
+                        ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                    ORDER BY s.data_envio ASC NULLS LAST
+                """)
+            except Exception:
+                # Se data_envio não existir, buscar sem ordenar por data_envio
+                cursor.execute("""
+                    SELECT s.cpf, s.nome, s.praca, s.valor_informado, s.concorda,
+                           e.id_da_pessoa_entregadora, e.recebedor AS recebedor_base
+                    FROM solicitacoes_adiantamento s
+                    LEFT JOIN entregadores e 
+                        ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                """)
         else:
-            cursor.execute("""
-                SELECT s.cpf, s.nome, s.praca, s.valor_informado, s.concorda, s.data_envio,
-                       e.id_da_pessoa_entregadora, e.recebedor AS recebedor_base
-                FROM solicitacoes_adiantamento s
-                LEFT JOIN entregadores e 
-                    ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
-                        '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
-                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
-                        '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
-                WHERE DATE(s.data_envio) = ?
-                ORDER BY s.data_envio ASC
-            """, (data_ref.strftime(FORMATO_DATA_ISO),))
+            try:
+                cursor.execute(f"""
+                    SELECT s.cpf, s.nome, s.praca, s.valor_informado, s.concorda, s.data_envio,
+                           e.id_da_pessoa_entregadora, e.recebedor AS recebedor_base
+                    FROM solicitacoes_adiantamento s
+                    LEFT JOIN entregadores e 
+                        ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                    WHERE DATE(s.data_envio) = {placeholder}
+                    ORDER BY s.data_envio ASC
+                """, (data_ref.strftime(FORMATO_DATA_ISO),))
+            except Exception:
+                # Se data_envio não existir, buscar todas sem filtro de data
+                cursor.execute("""
+                    SELECT s.cpf, s.nome, s.praca, s.valor_informado, s.concorda,
+                           e.id_da_pessoa_entregadora, e.recebedor AS recebedor_base
+                    FROM solicitacoes_adiantamento s
+                    LEFT JOIN entregadores e 
+                        ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                """)
         
         linhas = cursor.fetchall()
         conn.close()

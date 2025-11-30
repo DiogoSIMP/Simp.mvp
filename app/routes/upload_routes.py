@@ -29,6 +29,7 @@ from app.utils.route_helpers import (
     get_flash_message
 )
 from app.utils.form_control import form_is_open
+from app.services.storage_service import StorageService
 
 
 UPLOAD_HISTORY_FILE = "uploads_history.json"
@@ -68,30 +69,78 @@ def _normalizar_nomes_consolidado(consolidado_dict):
 
 
 def _get_historico_path(pasta_uploads):
+    """Mantido para compatibilidade, mas agora usa banco"""
     return os.path.join(pasta_uploads, UPLOAD_HISTORY_FILE)
 
 
 def _carregar_historico_uploads(pasta_uploads):
-    path = _get_historico_path(pasta_uploads)
-    if not os.path.exists(path):
-        return []
+    """Carrega histórico de uploads do banco de dados (PostgreSQL)"""
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                return data.get('uploads', [])
-            if isinstance(data, list):
-                return data
-    except json.JSONDecodeError:
-        pass
-    return []
+        # Carregar do banco de dados
+        uploads_db = StorageService.carregar_upload_history(pasta_uploads, HISTORICO_MAX_REGISTROS)
+        if uploads_db:
+            # Converter formato do banco para formato esperado
+            uploads = []
+            for item in uploads_db:
+                dados_json = item.get('dados_json', {})
+                uploads.append({
+                    "id": item.get('lote_id', ''),
+                    "arquivos": dados_json.get('arquivos', []),
+                    "titulo": item.get('titulo', 'Upload'),
+                    "total_entregadores": item.get('total_entregadores', 0),
+                    "valor_total": float(item.get('valor_total', 0)),
+                    "arquivos_sucesso": dados_json.get('arquivos_sucesso', 0),
+                    "arquivos_com_erro": dados_json.get('arquivos_com_erro', 0),
+                    "qtd_erros": dados_json.get('qtd_erros', 0),
+                    "criado_em": item.get('data_upload', ''),
+                    "criado_em_ts": None,  # Será calculado se necessário
+                })
+            return uploads
+        return []
+    except Exception as e:
+        print(f"❌ Erro ao carregar histórico do banco: {e}")
+        # Não usar fallback JSON - retornar vazio
+        return []
 
 
 def _salvar_historico_uploads(pasta_uploads, uploads):
-    path = _get_historico_path(pasta_uploads)
-    payload = {'uploads': uploads[:HISTORICO_MAX_REGISTROS]}
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    """Salva histórico de uploads no banco de dados"""
+    try:
+        # Salvar cada upload no banco
+        for upload in uploads[:HISTORICO_MAX_REGISTROS]:
+            lote_id = upload.get('id', uuid.uuid4().hex)
+            dados_json = {
+                'arquivos': upload.get('arquivos', []),
+                'arquivos_sucesso': upload.get('arquivos_sucesso', 0),
+                'arquivos_com_erro': upload.get('arquivos_com_erro', 0),
+                'qtd_erros': upload.get('qtd_erros', 0),
+            }
+            
+            # Converter timestamp se existir
+            data_upload = datetime.utcnow()
+            if upload.get('criado_em_ts'):
+                data_upload = datetime.utcfromtimestamp(upload['criado_em_ts'])
+            elif upload.get('criado_em'):
+                try:
+                    data_upload = datetime.fromisoformat(upload['criado_em'].replace('Z', '+00:00'))
+                except:
+                    pass
+            
+            StorageService.salvar_upload_history(
+                lote_id=lote_id,
+                titulo=upload.get('titulo', 'Upload'),
+                data_upload=data_upload,
+                total_arquivos=len(upload.get('arquivos', [])),
+                total_entregadores=upload.get('total_entregadores', 0),
+                valor_total=upload.get('valor_total', 0),
+                pasta_uploads=pasta_uploads,
+                dados_json=dados_json
+            )
+        print(f"✅ Histórico de uploads salvo no banco de dados")
+    except Exception as e:
+        print(f"❌ Erro ao salvar histórico no banco: {e}")
+        # Não usar fallback JSON - forçar correção do banco
+        raise
 
 
 def _gerar_titulo_lote(arquivo_nome):
@@ -251,7 +300,7 @@ def _processar_consolidado_diario(df_completo, data_hoje):
 
 
 def _salvar_resultado_processamento(pasta_uploads, resultado, arquivos_salvos, consolidado_diario=None):
-    """Salva resultado do processamento em JSON e CSV (geral e diário)"""
+    """Salva resultado do processamento no banco e CSV (geral e diário)"""
     resultado_serializavel = {
         'total_entregadores': resultado['total_entregadores'],
         'valor_total_geral': float(resultado['valor_total_geral']),
@@ -264,10 +313,20 @@ def _salvar_resultado_processamento(pasta_uploads, resultado, arquivos_salvos, c
         'entregadores_com_dados': resultado['entregadores_com_dados'],
     }
     
-    # Salvar JSON
-    resultado_json_path = os.path.join(pasta_uploads, ARQUIVO_ULTIMO_RESULTADO)
-    with open(resultado_json_path, 'w', encoding='utf-8') as f:
-        json.dump(resultado_serializavel, f, ensure_ascii=False, indent=2)
+    # Salvar no banco de dados (PostgreSQL)
+    try:
+        StorageService.salvar_processamento_resultado(
+            pasta_uploads=pasta_uploads,
+            resultado=resultado_serializavel,
+            dados_json=resultado_serializavel
+        )
+        print(f"✅ Resultado salvo no banco de dados")
+    except Exception as e:
+        print(f"❌ Erro ao salvar no banco: {e}")
+        # Não usar fallback JSON - forçar correção do banco
+        raise
+    
+    # JSON removido - usando apenas PostgreSQL para segurança e consultas
     
     # Salvar CSV consolidado geral
     consolidado_path = None
@@ -295,23 +354,38 @@ def _salvar_resultado_processamento(pasta_uploads, resultado, arquivos_salvos, c
 
 
 def _carregar_resultado_anterior(pasta_uploads):
-    """Carrega resultado anterior da sessão ou arquivo (geral e diário)"""
-    resultado_path = session.get('ultimo_resultado_path') or os.path.join(
-        pasta_uploads, ARQUIVO_ULTIMO_RESULTADO
-    )
+    """Carrega resultado anterior do banco ou arquivo (geral e diário)"""
+    # Tentar carregar do banco primeiro
+    resultado_json = None
+    try:
+        resultado_db = StorageService.carregar_processamento_resultado(pasta_uploads)
+        if resultado_db:
+            resultado_json = {
+                'total_entregadores': resultado_db.get('total_entregadores', 0),
+                'valor_total_geral': float(resultado_db.get('valor_total_geral', 0)),
+                'data_processamento': resultado_db.get('data_processamento', ''),
+                'erros': resultado_db.get('erros', []),
+                'total_arquivos': resultado_db.get('total_arquivos', 0),
+                'arquivos_sucesso': resultado_db.get('arquivos_sucesso', 0),
+                'arquivos_com_erro': resultado_db.get('arquivos_com_erro', 0),
+                'total_entregadores_cadastrados': resultado_db.get('total_entregadores_cadastrados', 0),
+                'entregadores_com_dados': resultado_db.get('entregadores_com_dados', 0),
+            }
+    except Exception as e:
+        print(f"❌ Erro ao carregar resultado do banco: {e}")
+        # Não usar fallback JSON - retornar None
+        return None, None, None, None
+    
+    # Se não encontrou no banco, retornar None
+    if not resultado_json:
+        return None, None, None, None
+    
     consolidado_path = session.get('ultimo_consolidado_path') or os.path.join(
         pasta_uploads, ARQUIVO_ULTIMO_CONSOLIDADO
     )
     consolidado_diario_path = session.get('ultimo_consolidado_diario_path') or os.path.join(
         pasta_uploads, ARQUIVO_CONSOLIDADO_DIARIO
     )
-    
-    if not os.path.exists(resultado_path):
-        return None, None, None, None
-    
-    # Carregar resumo
-    with open(resultado_path, 'r', encoding='utf-8') as f:
-        resultado_json = json.load(f)
     
     # Carregar consolidado geral
     consolidado_dict_completo = []
@@ -611,6 +685,16 @@ def init_upload_routes(app):
     def excluir_lote(lote_id):
         """Exclui um lote do histórico (apenas Master)"""
         try:
+            # Tentar excluir do banco primeiro
+            sucesso = StorageService.excluir_upload_history(lote_id)
+            
+            if sucesso:
+                return jsonify({
+                    'success': True,
+                    'message': 'Lote excluído com sucesso'
+                })
+            
+            # Fallback: tentar excluir do arquivo JSON
             base_uploads = Config.UPLOAD_FOLDER
             pasta_uploads = get_week_folder(base_uploads)
             
@@ -783,10 +867,20 @@ def init_upload_routes(app):
                 token = str(uuid.uuid4())
                 pasta_temp = Config.TEMP_FOLDER
                 os.makedirs(pasta_temp, exist_ok=True)
-                caminho_json = os.path.join(pasta_temp, f"{token}.json")
                 
-                with open(caminho_json, "w", encoding="utf-8") as f:
-                    json.dump(preview, f, ensure_ascii=False)
+                # Salvar no banco de dados (PostgreSQL)
+                try:
+                    StorageService.salvar_arquivo_temp(
+                        token=token,
+                        pasta_uploads=pasta_temp,
+                        dados_json=preview,
+                        expires_hours=24
+                    )
+                    print(f"✅ Preview salvo no banco de dados")
+                except Exception as e:
+                    print(f"❌ Erro ao salvar preview no banco: {e}")
+                    # Não usar fallback JSON - forçar correção do banco
+                    raise
                 
                 flash(
                     get_flash_message('upload', 'carregados', count=len(preview)),
@@ -818,9 +912,23 @@ def init_upload_routes(app):
             return redirect(url_for('upload_entregadores'))
         
         pasta_temp = Config.TEMP_FOLDER
-        caminho_json = os.path.join(pasta_temp, f"{token}.json")
         
-        if not os.path.exists(caminho_json):
+        # Tentar carregar do banco primeiro
+        preview = None
+        try:
+            arquivo_temp = StorageService.carregar_arquivo_temp(token)
+            if arquivo_temp and arquivo_temp.get('dados_json'):
+                preview = arquivo_temp['dados_json']
+        except Exception as e:
+            print(f"❌ Erro ao carregar preview do banco: {e}")
+            flash(
+                get_flash_message('upload', 'dados_nao_encontrados'),
+                'error'
+            )
+            return redirect(url_for('upload_entregadores'))
+        
+        # Se não encontrou no banco, retornar erro
+        if not preview:
             flash(
                 get_flash_message('upload', 'dados_nao_encontrados'),
                 'error'
@@ -828,8 +936,6 @@ def init_upload_routes(app):
             return redirect(url_for('upload_entregadores'))
         
         try:
-            with open(caminho_json, "r", encoding="utf-8") as f:
-                preview = json.load(f)
             
             inseridos = UploadService.salvar_no_banco(preview)
             flash(
@@ -837,7 +943,8 @@ def init_upload_routes(app):
                 'success'
             )
             
-            os.remove(caminho_json)
+            # Limpar arquivo temporário do banco (se necessário)
+            # StorageService já gerencia expiração automática
             return redirect(url_for('entregadores'))
         except Exception as e:
             flash(

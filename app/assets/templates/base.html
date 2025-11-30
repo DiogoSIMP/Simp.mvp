@@ -268,6 +268,60 @@
         });
     }
     window.copiarCNPJ = copiarCNPJ; // expõe no escopo global se você chamar via onclick
+
+    // ================== VERIFICAÇÃO DE INATIVIDADE ==================
+    {% if session.get('user_id') %}
+    (function() {
+      const INACTIVITY_TIMEOUT = 3 * 60 * 60 * 1000; // 3 horas em milissegundos
+      let inactivityTimer;
+      let lastActivity = Date.now();
+
+      // Função para resetar o timer de inatividade
+      function resetInactivityTimer() {
+        lastActivity = Date.now();
+        clearTimeout(inactivityTimer);
+        
+        inactivityTimer = setTimeout(() => {
+          // Verificar se ainda está inativo
+          const timeSinceLastActivity = Date.now() - lastActivity;
+          if (timeSinceLastActivity >= INACTIVITY_TIMEOUT) {
+            // Fazer logout automático
+            window.location.href = '{{ url_for("logout") }}?timeout=1';
+          }
+        }, INACTIVITY_TIMEOUT);
+      }
+
+      // Eventos que indicam atividade do usuário
+      const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+      
+      activityEvents.forEach(event => {
+        document.addEventListener(event, resetInactivityTimer, { passive: true });
+      });
+
+      // Verificar periodicamente (a cada 5 minutos) se a sessão ainda é válida
+      setInterval(() => {
+        fetch('{{ url_for("check_session") }}', {
+          method: 'GET',
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+        .then(response => {
+          if (response.status === 401 || response.status === 403) {
+            // Sessão expirada no servidor
+            window.location.href = '{{ url_for("login") }}?expired=1';
+          }
+        })
+        .catch(() => {
+          // Ignorar erros de rede
+        });
+      }, 5 * 60 * 1000); // A cada 5 minutos
+
+      // Inicializar o timer
+      resetInactivityTimer();
+    })();
+    {% endif %}
   </script>
 
   {% block extra_js %}{% endblock %}

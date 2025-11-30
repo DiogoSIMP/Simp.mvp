@@ -1,9 +1,26 @@
-from app.models.database import get_db_connection, formatar_nome
-import sqlite3
-
-import sqlite3
+from app.models.database import get_db_connection, formatar_nome, get_db_cursor, get_db_placeholder, is_postgresql_connection
+from app.utils.db_helpers import row_to_dict
 
 class EntregadoresService:
+    """
+    Serviço para gerenciamento de entregadores
+    Usa helpers centralizados para reduzir duplicação de código
+    """
+    
+    @staticmethod
+    def _get_placeholder(conn):
+        """Retorna o placeholder correto baseado no tipo de banco (usando helper centralizado)"""
+        return get_db_placeholder(conn)
+    
+    @staticmethod
+    def _get_cursor(conn):
+        """Retorna cursor apropriado para o tipo de banco (usando helper centralizado)"""
+        return get_db_cursor(conn)
+    
+    @staticmethod
+    def _to_dict(row):
+        """Converte row para dict (usando helper centralizado)"""
+        return row_to_dict(row)
     
     # ================================
     # 📋 LISTAR ENTREGADORES
@@ -12,21 +29,35 @@ class EntregadoresService:
     def listar_entregadores():
         """Lista todos os entregadores"""
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
+        
         try:
-            entregadores = conn.execute('''
+            if is_postgresql:
+                from psycopg2.extras import RealDictCursor
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+            else:
+                cursor = conn.cursor()
+            
+            cursor.execute('''
                 SELECT * FROM entregadores 
                 ORDER BY status DESC, recebedor ASC
-            ''').fetchall()
+            ''')
             
+            entregadores = cursor.fetchall()
             entregadores_list = []
             for entregador in entregadores:
-                e = dict(entregador)
+                if isinstance(entregador, dict):
+                    e = dict(entregador)
+                elif hasattr(entregador, 'keys'):
+                    e = dict(entregador)
+                else:
+                    continue
                 e['recebedor'] = formatar_nome(e['recebedor'])
                 entregadores_list.append(e)
                 
             return entregadores_list
             
-        except sqlite3.Error as e:
+        except Exception as e:
             raise Exception(f'Erro ao carregar entregadores: {str(e)}')
         finally:
             conn.close()
@@ -38,8 +69,17 @@ class EntregadoresService:
     def buscar_entregador_por_id(id_entregador):
         """Busca entregador e último histórico de PIX"""
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
+        
         try:
-            entregador = conn.execute("""
+            if is_postgresql:
+                from psycopg2.extras import RealDictCursor
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+            else:
+                cursor = conn.cursor()
+            
+            cursor.execute(f"""
                 SELECT 
                     e.id_da_pessoa_entregadora,
                     e.recebedor,
@@ -55,16 +95,24 @@ class EntregadoresService:
                 FROM entregadores e
                 LEFT JOIN historico_pix h
                     ON e.id_da_pessoa_entregadora = h.id_da_pessoa_entregadora
-                WHERE e.id_da_pessoa_entregadora = ?
+                WHERE e.id_da_pessoa_entregadora = {placeholder}
                 ORDER BY h.data_registro DESC
                 LIMIT 1
-            """, (id_entregador,)).fetchone()
+            """, (id_entregador,))
+
+            entregador = cursor.fetchone()
 
             if not entregador:
                 return None
             
             # Converter para dict e garantir que todos os campos existam
-            dados = dict(entregador)
+            if isinstance(entregador, dict):
+                dados = dict(entregador)
+            elif hasattr(entregador, 'keys'):
+                dados = dict(entregador)
+            else:
+                return None
+            
             # Garantir que campos opcionais tenham valores padrão
             dados.setdefault('praca', None)
             dados.setdefault('subpraca', None)
@@ -75,7 +123,7 @@ class EntregadoresService:
             
             return dados
 
-        except sqlite3.Error as e:
+        except Exception as e:
             raise Exception(f'Erro ao buscar entregador: {str(e)}')
         finally:
             conn.close()
@@ -91,37 +139,38 @@ class EntregadoresService:
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
+            placeholder = EntregadoresService._get_placeholder(conn)
             registros_atualizados = 0
             
             # Atualizar registros pendentes por CPF
             if cpf_limpo:
-                cursor.execute('''
+                cursor.execute(f'''
                     UPDATE historico_pix
-                    SET id_da_pessoa_entregadora = ?, status = ?
-                    WHERE cpf = ? AND (id_da_pessoa_entregadora IS NULL OR id_da_pessoa_entregadora = '')
+                    SET id_da_pessoa_entregadora = {placeholder}, status = {placeholder}
+                    WHERE cpf = {placeholder} AND (id_da_pessoa_entregadora IS NULL OR id_da_pessoa_entregadora = '')
                 ''', (id_entregador, STATUS_PIX['APROVADO'], cpf_limpo))
                 registros_atualizados += cursor.rowcount
             
             # Atualizar registros pendentes por chave PIX (mesmo que já tenha sido atualizado por CPF)
             if chave_pix:
-                cursor.execute('''
+                cursor.execute(f'''
                     UPDATE historico_pix
-                    SET id_da_pessoa_entregadora = ?, status = ?
-                    WHERE chave_pix = ? AND (id_da_pessoa_entregadora IS NULL OR id_da_pessoa_entregadora = '')
+                    SET id_da_pessoa_entregadora = {placeholder}, status = {placeholder}
+                    WHERE chave_pix = {placeholder} AND (id_da_pessoa_entregadora IS NULL OR id_da_pessoa_entregadora = '')
                 ''', (id_entregador, STATUS_PIX['APROVADO'], chave_pix))
                 registros_atualizados += cursor.rowcount
             
             # Também atualizar registros que já têm o id_entregador mas status ainda está pendente
-            cursor.execute('''
+            cursor.execute(f'''
                 UPDATE historico_pix
-                SET status = ?
-                WHERE id_da_pessoa_entregadora = ? AND (status IS NULL OR status = ? OR status = '')
+                SET status = {placeholder}
+                WHERE id_da_pessoa_entregadora = {placeholder} AND (status IS NULL OR status = {placeholder} OR status = '')
             ''', (STATUS_PIX['APROVADO'], id_entregador, STATUS_PIX['PENDENTE']))
             registros_atualizados += cursor.rowcount
             
             conn.commit()
             return registros_atualizados
-        except sqlite3.Error as e:
+        except Exception as e:
             raise Exception(f'Erro ao atualizar registros PIX pendentes: {str(e)}')
         finally:
             conn.close()
@@ -140,18 +189,20 @@ class EntregadoresService:
         
         conn = get_db_connection()
         try:
-            cursor = conn.cursor()
+            cursor = EntregadoresService._get_cursor(conn)
+            placeholder = EntregadoresService._get_placeholder(conn)
+            
             # Buscar por CPF normalizado (removendo pontos, traços, espaços)
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT * FROM entregadores
                 WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                     LTRIM(RTRIM(COALESCE(cpf, ''))), 
-                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') = ?
+                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') = {placeholder}
             ''', (cpf_limpo,))
             
             resultado = cursor.fetchone()
-            return dict(resultado) if resultado else None
-        except sqlite3.Error as e:
+            return EntregadoresService._to_dict(resultado)
+        except Exception as e:
             raise Exception(f'Erro ao buscar entregador por CPF: {str(e)}')
         finally:
             conn.close()
@@ -169,10 +220,21 @@ class EntregadoresService:
             return None
 
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = EntregadoresService._get_placeholder(conn)
+        
         try:
-            cursor = conn.cursor()
+            cursor = EntregadoresService._get_cursor(conn)
+            
+            # No PostgreSQL, não existe datetime(), então usamos COALESCE diretamente
+            # No SQLite, datetime() funciona
+            if is_postgresql:
+                order_by = "COALESCE(data_registro, CURRENT_TIMESTAMP) DESC"
+            else:
+                order_by = "datetime(COALESCE(data_registro, CURRENT_TIMESTAMP)) DESC"
+            
             cursor.execute(
-                """
+                f"""
                 SELECT 
                     nome,
                     cpf,
@@ -183,15 +245,15 @@ class EntregadoresService:
                 FROM historico_pix
                 WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                     LTRIM(RTRIM(COALESCE(cpf, ''))), 
-                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') = ?
-                ORDER BY datetime(COALESCE(data_registro, CURRENT_TIMESTAMP)) DESC
+                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') = {placeholder}
+                ORDER BY {order_by}
                 LIMIT 1
                 """,
                 (cpf_limpo,)
             )
             resultado = cursor.fetchone()
-            return dict(resultado) if resultado else None
-        except sqlite3.Error as e:
+            return EntregadoresService._to_dict(resultado)
+        except Exception as e:
             raise Exception(f'Erro ao buscar dados bancários: {str(e)}')
         finally:
             conn.close()
@@ -208,8 +270,9 @@ class EntregadoresService:
         from app.utils.route_helpers import normalize_cpf
         
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
         try:
-            cursor = conn.cursor()
+            cursor = EntregadoresService._get_cursor(conn)
             erros = []
             
             # Validar CPF
@@ -218,9 +281,15 @@ class EntregadoresService:
                 cpf_limpo = normalize_cpf(cpf)
                 if cpf_limpo:
                     # Buscar todos os entregadores e normalizar CPF em Python
-                    query = 'SELECT id_da_pessoa_entregadora, recebedor, cpf FROM entregadores WHERE cpf IS NOT NULL AND cpf != ""'
+                    placeholder = EntregadoresService._get_placeholder(conn)
+                    # No PostgreSQL, usar aspas simples ou LENGTH para strings vazias
+                    if is_postgresql:
+                        query = f'SELECT id_da_pessoa_entregadora, recebedor, cpf FROM entregadores WHERE cpf IS NOT NULL AND LENGTH(TRIM(cpf)) > 0'
+                    else:
+                        query = 'SELECT id_da_pessoa_entregadora, recebedor, cpf FROM entregadores WHERE cpf IS NOT NULL AND cpf != ""'
+                    
                     if id_entregador_excluir:
-                        query += ' AND id_da_pessoa_entregadora != ?'
+                        query += f' AND id_da_pessoa_entregadora != {placeholder}'
                         cursor.execute(query, (id_entregador_excluir,))
                     else:
                         cursor.execute(query)
@@ -234,21 +303,25 @@ class EntregadoresService:
             # Validar Email
             email = dados.get('email', '').strip()
             if email:
-                query = '''
+                placeholder = EntregadoresService._get_placeholder(conn)
+                query = f'''
                     SELECT id_da_pessoa_entregadora, recebedor 
                     FROM entregadores
-                    WHERE LOWER(TRIM(email)) = LOWER(?)
+                    WHERE LOWER(TRIM(email)) = LOWER({placeholder})
                 '''
                 params = [email]
                 
                 if id_entregador_excluir:
-                    query += ' AND id_da_pessoa_entregadora != ?'
+                    query += f' AND id_da_pessoa_entregadora != {placeholder}'
                     params.append(id_entregador_excluir)
                 
                 cursor.execute(query, params)
                 resultado = cursor.fetchone()
                 if resultado:
-                    erros.append(f'Email já cadastrado para o entregador: {resultado["recebedor"]}')
+                    if isinstance(resultado, dict):
+                        erros.append(f'Email já cadastrado para o entregador: {resultado["recebedor"]}')
+                    else:
+                        erros.append(f'Email já cadastrado para o entregador: {resultado[1]}')
             
             # Validar CNPJ
             cnpj = dados.get('cnpj', '').strip()
@@ -258,9 +331,15 @@ class EntregadoresService:
                 cnpj_limpo = re.sub(r'\D', '', cnpj)
                 if cnpj_limpo:
                     # Buscar todos os entregadores e normalizar CNPJ em Python
-                    query = 'SELECT id_da_pessoa_entregadora, recebedor, cnpj FROM entregadores WHERE cnpj IS NOT NULL AND cnpj != ""'
+                    placeholder = EntregadoresService._get_placeholder(conn)
+                    # No PostgreSQL, usar aspas simples ou LENGTH para strings vazias
+                    if is_postgresql:
+                        query = f'SELECT id_da_pessoa_entregadora, recebedor, cnpj FROM entregadores WHERE cnpj IS NOT NULL AND LENGTH(TRIM(cnpj)) > 0'
+                    else:
+                        query = 'SELECT id_da_pessoa_entregadora, recebedor, cnpj FROM entregadores WHERE cnpj IS NOT NULL AND cnpj != ""'
+                    
                     if id_entregador_excluir:
-                        query += ' AND id_da_pessoa_entregadora != ?'
+                        query += f' AND id_da_pessoa_entregadora != {placeholder}'
                         cursor.execute(query, (id_entregador_excluir,))
                     else:
                         cursor.execute(query)
@@ -274,23 +353,26 @@ class EntregadoresService:
             # Validar Chave PIX
             chave_pix = dados.get('chave_pix', '').strip()
             if chave_pix:
-                query = '''
+                placeholder = EntregadoresService._get_placeholder(conn)
+                query = f'''
                     SELECT h.id_da_pessoa_entregadora, e.recebedor
                     FROM historico_pix h
                     LEFT JOIN entregadores e ON h.id_da_pessoa_entregadora = e.id_da_pessoa_entregadora
-                    WHERE h.chave_pix = ?
+                    WHERE h.chave_pix = {placeholder}
                 '''
                 params = [chave_pix]
                 
                 if id_entregador_excluir:
-                    query += ' AND (h.id_da_pessoa_entregadora IS NULL OR h.id_da_pessoa_entregadora != ?)'
+                    query += f' AND (h.id_da_pessoa_entregadora IS NULL OR h.id_da_pessoa_entregadora != {placeholder})'
                     params.append(id_entregador_excluir)
                 
                 cursor.execute(query, params)
                 resultado = cursor.fetchone()
-                if resultado and resultado["id_da_pessoa_entregadora"]:
-                    nome = resultado["recebedor"] if resultado["recebedor"] else "Entregador não identificado"
-                    erros.append(f'Chave PIX já cadastrada para: {nome}')
+                if resultado:
+                    resultado_dict = EntregadoresService._to_dict(resultado) if not isinstance(resultado, dict) else resultado
+                    if resultado_dict and resultado_dict.get("id_da_pessoa_entregadora"):
+                        nome = resultado_dict.get("recebedor") or "Entregador não identificado"
+                        erros.append(f'Chave PIX já cadastrada para: {nome}')
             
             return erros
             
@@ -314,13 +396,17 @@ class EntregadoresService:
             raise Exception(' | '.join(erros_validacao))
         
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = EntregadoresService._get_placeholder(conn)
+        placeholders = ", ".join([placeholder] * 9)
+        
         try:
             cursor = conn.cursor()
             # Insere entregador
-            cursor.execute('''
+            cursor.execute(f'''
                 INSERT INTO entregadores 
                 (id_da_pessoa_entregadora, recebedor, email, cpf, cnpj, praca, subpraca, emissor, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({placeholders})
             ''', (
                 dados['id_da_pessoa_entregadora'],
                 dados['recebedor'],
@@ -348,18 +434,21 @@ class EntregadoresService:
             if chave_pix:
                 # Reabrir cursor após commit (ou usar nova conexão)
                 cursor = conn.cursor()
+                placeholder = EntregadoresService._get_placeholder(conn)
+                
                 # Verificar se já existe um registro para esta chave PIX
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT id FROM historico_pix 
-                    WHERE chave_pix = ? AND id_da_pessoa_entregadora = ?
+                    WHERE chave_pix = {placeholder} AND id_da_pessoa_entregadora = {placeholder}
                 ''', (chave_pix, id_ent))
                 
                 if not cursor.fetchone():
                     # Só insere se não existir
-                    cursor.execute('''
+                    placeholders = ", ".join([placeholder] * 5)
+                    cursor.execute(f'''
                         INSERT INTO historico_pix
                         (id_da_pessoa_entregadora, chave_pix, tipo_de_chave_pix, cpf, status)
-                        VALUES (?, ?, ?, ?, ?)
+                        VALUES ({placeholders})
                     ''', (
                         id_ent,
                         chave_pix,
@@ -390,13 +479,20 @@ class EntregadoresService:
             raise Exception(' | '.join(erros_validacao))
         
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = EntregadoresService._get_placeholder(conn)
+        
         try:
             cursor = conn.cursor()
 
-            cursor.execute('''
+            placeholders_update = ", ".join([f"{col} = {placeholder}" for col in [
+                "recebedor", "email", "cpf", "cnpj", "praca", "subpraca", "emissor", "status"
+            ]])
+            
+            cursor.execute(f'''
                 UPDATE entregadores 
-                SET recebedor = ?, email = ?, cpf = ?, cnpj = ?, praca = ?, subpraca = ?, emissor = ?, status = ?
-                WHERE id_da_pessoa_entregadora = ?
+                SET {placeholders_update}
+                WHERE id_da_pessoa_entregadora = {placeholder}
             ''', (
                 dados.get('recebedor', ''),
                 dados.get('email', ''),
@@ -411,9 +507,10 @@ class EntregadoresService:
 
             # Se chave_pix for alterada, insere novo histórico
             if dados.get('chave_pix'):
-                cursor.execute('''
+                placeholders_insert = ", ".join([placeholder] * 3)
+                cursor.execute(f'''
                     INSERT INTO historico_pix (id_da_pessoa_entregadora, chave_pix, tipo_de_chave_pix)
-                    VALUES (?, ?, ?)
+                    VALUES ({placeholders_insert})
                 ''', (
                     id_entregador,
                     dados['chave_pix'],
@@ -435,13 +532,16 @@ class EntregadoresService:
     def excluir_entregador(id_entregador):
         """Exclui entregador e histórico associado"""
         conn = get_db_connection()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = EntregadoresService._get_placeholder(conn)
+        
         try:
             cursor = conn.cursor()
-            cursor.execute('DELETE FROM historico_pix WHERE id_da_pessoa_entregadora = ?', (id_entregador,))
-            cursor.execute('DELETE FROM entregadores WHERE id_da_pessoa_entregadora = ?', (id_entregador,))
+            cursor.execute(f'DELETE FROM historico_pix WHERE id_da_pessoa_entregadora = {placeholder}', (id_entregador,))
+            cursor.execute(f'DELETE FROM entregadores WHERE id_da_pessoa_entregadora = {placeholder}', (id_entregador,))
             conn.commit()
             return True
-        except sqlite3.Error as e:
+        except Exception as e:
             raise Exception(f'Erro ao excluir entregador: {str(e)}')
         finally:
             conn.close()

@@ -1,5 +1,5 @@
 from datetime import datetime
-from app.models.database import get_db_connection
+from app.models.database import get_db_connection, is_postgresql_connection
 
 
 # =====================================================
@@ -12,9 +12,17 @@ def dict_row(cursor, row):
 def get_form_config():
     """Retorna o único registro da tabela form_config."""
     conn = get_db_connection()
-    conn.row_factory = dict_row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM form_config WHERE id = 1")
+    is_postgresql = is_postgresql_connection(conn)
+    
+    if is_postgresql:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        conn.row_factory = dict_row
+        cursor = conn.cursor()
+    
+    placeholder = "%s" if is_postgresql else "?"
+    cursor.execute(f"SELECT * FROM form_config WHERE id = {placeholder}", (1,))
     row = cursor.fetchone()
     conn.close()
     return row
@@ -54,9 +62,11 @@ def fechar_formulario():
 def agendar_abertura(data_hora):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    is_postgresql = is_postgresql_connection(conn)
+    placeholder = "%s" if is_postgresql else "?"
+    cursor.execute(f"""
         UPDATE form_config
-        SET scheduled_open = ?
+        SET scheduled_open = {placeholder}
         WHERE id = 1
     """, (data_hora,))
     conn.commit()
@@ -66,9 +76,11 @@ def agendar_abertura(data_hora):
 def agendar_fechamento(data_hora):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    is_postgresql = is_postgresql_connection(conn)
+    placeholder = "%s" if is_postgresql else "?"
+    cursor.execute(f"""
         UPDATE form_config
-        SET scheduled_close = ?
+        SET scheduled_close = {placeholder}
         WHERE id = 1
     """, (data_hora,))
     conn.commit()

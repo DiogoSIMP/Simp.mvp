@@ -18,6 +18,7 @@
       <div class="info-item"><span class="label">Nome</span><span class="valor">{{ entregador.recebedor }}</span></div>
       <div class="info-item"><span class="label">CPF</span><span class="valor">{{ entregador.cpf or '—' }}</span></div>
       <div class="info-item"><span class="label">CNPJ</span><span class="valor">{{ entregador.cnpj }}</span></div>
+      <div class="info-item"><span class="label">Praça</span><span class="valor">{{ entregador.praca or '—' }}</span></div>
       <div class="info-item"><span class="label">Subpraça</span><span class="valor">{{ entregador.subpraca or '—' }}</span></div>
       <div class="info-item"><span class="label">Status</span>
         {% if entregador.status == 'Ativo' %}
@@ -75,8 +76,19 @@
       <label>CNPJ</label>
       <input type="text" name="cnpj" value="{{ entregador.cnpj or '' }}">
 
+      <label>Praça</label>
+      <select name="praca" id="editPraca">
+        <option value="">Selecione a praça...</option>
+        <option value="Rio Barra" {% if entregador.praca == 'Rio Barra' %}selected{% endif %}>Rio Barra</option>
+        <option value="Rio Zona Sul" {% if entregador.praca == 'Rio Zona Sul' %}selected{% endif %}>Rio Zona Sul</option>
+        <option value="Rio Campo Grande & Santa Cruz" {% if entregador.praca == 'Rio Campo Grande & Santa Cruz' %}selected{% endif %}>Rio Campo Grande & Santa Cruz</option>
+        <option value="Rio Madureira" {% if entregador.praca == 'Rio Madureira' %}selected{% endif %}>Rio Madureira</option>
+      </select>
+
       <label>Subpraça</label>
-      <input type="text" name="subpraca" value="{{ entregador.subpraca or '' }}">
+      <select name="subpraca" id="editSubpraca">
+        <option value="">Selecione a sub-praça...</option>
+      </select>
 
       <label>Status</label>
       <select name="status">
@@ -97,6 +109,14 @@
     </form>
   </div>
 </div>
+
+<script>
+  // Passar dados do template para JavaScript
+  const entregadorData = {
+    praca: '{{ entregador.praca if entregador and entregador.praca else "" }}',
+    subpraca: '{{ entregador.subpraca if entregador and entregador.subpraca else "" }}'
+  };
+</script>
 
 <script src="{{ url_for('static', filename='js/detalhes_entregador.js') }}"></script>
 {% endblock %}

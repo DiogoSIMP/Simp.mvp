@@ -641,5 +641,37 @@
             }
         }
     }
+
+    // ===== SUPORTE PARA TECLA ENTER =====
+    // Adicionar listener para Enter em todos os campos de input do formulário
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form');
+        if (form) {
+            // Capturar Enter em todos os inputs e selects
+            form.addEventListener('keydown', function(e) {
+                // Se pressionou Enter
+                if (e.key === 'Enter' || e.keyCode === 13) {
+                    // Não fazer nada se for textarea
+                    if (e.target.tagName === 'TEXTAREA') {
+                        return;
+                    }
+                    
+                    // Prevenir submit padrão do formulário
+                    e.preventDefault();
+                    
+                    // Se estiver no último passo, submeter o formulário
+                    if (currentStep === totalSteps) {
+                        const btnSubmit = document.getElementById('btnSubmit');
+                        if (btnSubmit) {
+                            btnSubmit.click();
+                        }
+                    } else {
+                        // Caso contrário, avançar para próximo passo
+                        nextStep();
+                    }
+                }
+            });
+        }
+    });
 </script>
 {% endblock %}

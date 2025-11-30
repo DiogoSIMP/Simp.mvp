@@ -16,3 +16,6 @@ Werkzeug>=3.0.0
 
 # Criptografia de senhas
 bcrypt>=4.0.0
+
+# Banco de dados PostgreSQL
+psycopg2-binary>=2.9.0

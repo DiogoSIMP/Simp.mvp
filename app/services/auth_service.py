@@ -4,7 +4,7 @@ Gerencia login, logout e verificação de permissões por role
 """
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-from app.models.database import get_db_connection
+from app.models.database import get_db_connection, is_postgresql_connection
 
 
 class AuthService:
@@ -25,12 +25,15 @@ class AuthService:
         
         conn = get_db_connection()
         cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
         
         try:
             senha_hash = generate_password_hash(senha)
-            cursor.execute("""
+            placeholders = ", ".join([placeholder] * 5)
+            cursor.execute(f"""
                 INSERT INTO usuarios (username, email, senha_hash, nome_completo, role, ativo)
-                VALUES (?, ?, ?, ?, ?, 1)
+                VALUES ({placeholders}, 1)
             """, (username, email, senha_hash, nome_completo, role))
             conn.commit()
             return True
@@ -44,12 +47,20 @@ class AuthService:
     def verificar_login(username, senha):
         """Verifica credenciais e retorna dados do usuário se válido"""
         conn = get_db_connection()
-        cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
         
-        cursor.execute("""
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+        
+        placeholder = "%s" if is_postgresql else "?"
+        
+        cursor.execute(f"""
             SELECT id, username, email, senha_hash, nome_completo, role, ativo
             FROM usuarios
-            WHERE username = ? AND ativo = 1
+            WHERE username = {placeholder} AND ativo = 1
         """, (username,))
         
         usuario = cursor.fetchone()
@@ -58,14 +69,25 @@ class AuthService:
         if not usuario:
             return None
         
+        # Para SQLite, converter para dict se necessário
+        # Para PostgreSQL com RealDictCursor, já é dict
+        if not isinstance(usuario, dict):
+            if hasattr(usuario, 'keys'):
+                usuario = dict(usuario)
+            else:
+                # Se for tupla (não deveria acontecer, mas por segurança)
+                return None
+        
         if check_password_hash(usuario['senha_hash'], senha):
             # Atualizar último acesso
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("""
+            is_postgresql = is_postgresql_connection(conn)
+            placeholder = "%s" if is_postgresql else "?"
+            cursor.execute(f"""
                 UPDATE usuarios
-                SET ultimo_acesso = ?
-                WHERE id = ?
+                SET ultimo_acesso = {placeholder}
+                WHERE id = {placeholder}
             """, (datetime.now().isoformat(), usuario['id']))
             conn.commit()
             conn.close()
@@ -84,19 +106,44 @@ class AuthService:
     def buscar_usuario_por_id(user_id):
         """Busca usuário por ID"""
         conn = get_db_connection()
-        cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
         
-        cursor.execute("""
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+        
+        placeholder = "%s" if is_postgresql else "?"
+        
+        cursor.execute(f"""
             SELECT id, username, email, nome_completo, role, ativo, data_criacao, ultimo_acesso, foto_perfil
             FROM usuarios
-            WHERE id = ? AND ativo = 1
+            WHERE id = {placeholder} AND ativo = 1
         """, (user_id,))
         
         usuario = cursor.fetchone()
         conn.close()
         
         if usuario:
-            return dict(usuario)
+            if not isinstance(usuario, dict):
+                if hasattr(usuario, 'keys'):
+                    usuario_dict = dict(usuario)
+                else:
+                    return None
+            else:
+                usuario_dict = dict(usuario)
+            
+            # Converter datetime para string se necessário (PostgreSQL retorna datetime objects)
+            if 'ultimo_acesso' in usuario_dict and usuario_dict['ultimo_acesso']:
+                if not isinstance(usuario_dict['ultimo_acesso'], str):
+                    usuario_dict['ultimo_acesso'] = usuario_dict['ultimo_acesso'].strftime('%Y-%m-%d %H:%M:%S')
+            
+            if 'data_criacao' in usuario_dict and usuario_dict['data_criacao']:
+                if not isinstance(usuario_dict['data_criacao'], str):
+                    usuario_dict['data_criacao'] = usuario_dict['data_criacao'].strftime('%Y-%m-%d %H:%M:%S')
+            
+            return usuario_dict
         return None
     
     @staticmethod
@@ -111,7 +158,13 @@ class AuthService:
     def listar_usuarios():
         """Lista todos os usuários ativos"""
         conn = get_db_connection()
-        cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
+        
+        if is_postgresql:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
         
         cursor.execute("""
             SELECT id, username, email, nome_completo, role, ativo, data_criacao, ultimo_acesso
@@ -125,40 +178,64 @@ class AuthService:
                 nome_completo
         """)
         
-        usuarios = [dict(row) for row in cursor.fetchall()]
+        usuarios = cursor.fetchall()
         conn.close()
         
-        return usuarios
+        # Converter para lista de dicionários e formatar datetimes
+        result = []
+        for row in usuarios:
+            if isinstance(row, dict):
+                usuario_dict = dict(row)
+            elif hasattr(row, 'keys'):
+                usuario_dict = dict(row)
+            else:
+                # Se for tupla, não deveria acontecer, mas por segurança
+                continue
+            
+            # Converter datetime para string se necessário (PostgreSQL retorna datetime objects)
+            if 'ultimo_acesso' in usuario_dict and usuario_dict['ultimo_acesso']:
+                if not isinstance(usuario_dict['ultimo_acesso'], str):
+                    usuario_dict['ultimo_acesso'] = usuario_dict['ultimo_acesso'].strftime('%Y-%m-%d %H:%M:%S')
+            
+            if 'data_criacao' in usuario_dict and usuario_dict['data_criacao']:
+                if not isinstance(usuario_dict['data_criacao'], str):
+                    usuario_dict['data_criacao'] = usuario_dict['data_criacao'].strftime('%Y-%m-%d %H:%M:%S')
+            
+            result.append(usuario_dict)
+        
+        return result
     
     @staticmethod
     def atualizar_usuario(user_id, nome_completo=None, email=None, role=None, ativo=None, foto_perfil=None):
         """Atualiza dados do usuário"""
         conn = get_db_connection()
         cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
         
         updates = []
         params = []
         
         if nome_completo is not None:
-            updates.append("nome_completo = ?")
+            updates.append(f"nome_completo = {placeholder}")
             params.append(nome_completo)
         
         if email is not None:
-            updates.append("email = ?")
+            updates.append(f"email = {placeholder}")
             params.append(email)
         
         if role is not None:
             if role not in AuthService.ROLES:
                 raise ValueError(f"Role inválida. Use: {', '.join(AuthService.ROLES.keys())}")
-            updates.append("role = ?")
+            updates.append(f"role = {placeholder}")
             params.append(role)
         
         if ativo is not None:
-            updates.append("ativo = ?")
+            updates.append(f"ativo = {placeholder}")
             params.append(1 if ativo else 0)
         
         if foto_perfil is not None:
-            updates.append("foto_perfil = ?")
+            updates.append(f"foto_perfil = {placeholder}")
             params.append(foto_perfil)
         
         if not updates:
@@ -169,7 +246,7 @@ class AuthService:
         cursor.execute(f"""
             UPDATE usuarios
             SET {', '.join(updates)}
-            WHERE id = ?
+            WHERE id = {placeholder}
         """, params)
         
         conn.commit()
@@ -181,8 +258,10 @@ class AuthService:
         """Altera a senha do usuário"""
         conn = get_db_connection()
         cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
         
-        cursor.execute("SELECT senha_hash FROM usuarios WHERE id = ?", (user_id,))
+        cursor.execute(f"SELECT senha_hash FROM usuarios WHERE id = {placeholder}", (user_id,))
         usuario = cursor.fetchone()
         
         if not usuario or not check_password_hash(usuario['senha_hash'], senha_atual):
@@ -190,10 +269,10 @@ class AuthService:
             return False
         
         nova_senha_hash = generate_password_hash(nova_senha)
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE usuarios
-            SET senha_hash = ?
-            WHERE id = ?
+            SET senha_hash = {placeholder}
+            WHERE id = {placeholder}
         """, (nova_senha_hash, user_id))
         
         conn.commit()
@@ -205,12 +284,14 @@ class AuthService:
         """Reseta a senha do usuário (apenas Master pode fazer isso)"""
         conn = get_db_connection()
         cursor = conn.cursor()
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = "%s" if is_postgresql else "?"
         
         nova_senha_hash = generate_password_hash(nova_senha)
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE usuarios
-            SET senha_hash = ?
-            WHERE id = ?
+            SET senha_hash = {placeholder}
+            WHERE id = {placeholder}
         """, (nova_senha_hash, user_id))
         
         conn.commit()

@@ -2,7 +2,7 @@
 Rotas de Autenticação
 Login, logout e gerenciamento de sessão
 """
-from flask import render_template, request, redirect, url_for, flash, session, send_from_directory
+from flask import render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify
 from datetime import datetime
 import os
 from werkzeug.utils import secure_filename
@@ -96,6 +96,7 @@ def init_auth_routes(app):
                 session['email'] = session['pending_email']
                 session['user_role'] = session['pending_role']
                 session['two_fa_verified'] = True
+                session['last_activity'] = datetime.now().isoformat()
                 session.permanent = True
                 
                 # Buscar foto de perfil se existir
@@ -153,9 +154,19 @@ def init_auth_routes(app):
     def logout():
         """Fazer logout"""
         nome = session.get('nome_completo', 'Usuário')
+        timeout = request.args.get('timeout')
         session.clear()
-        flash(f'Até logo, {nome}!', 'info')
+        if timeout:
+            flash('Sua sessão expirou por inatividade. Faça login novamente.', 'warning')
+        else:
+            flash(f'Até logo, {nome}!', 'info')
         return redirect(url_for('login'))
+    
+    @app.route('/check-session')
+    @login_required
+    def check_session():
+        """Endpoint para verificar se a sessão ainda é válida (usado pelo JavaScript)"""
+        return jsonify({'status': 'ok', 'user_id': session.get('user_id')})
     
     @app.route('/perfil')
     @login_required
@@ -172,15 +183,26 @@ def init_auth_routes(app):
         # Formatar data de cadastro
         if usuario.get('data_criacao'):
             try:
-                data_str = usuario['data_criacao']
-                # Remover timezone se existir
-                if 'T' in data_str:
-                    data_str = data_str.split('T')[0]
-                # Tentar parsear
-                data_obj = datetime.strptime(data_str, '%Y-%m-%d')
-                usuario['data_criacao_formatada'] = data_obj.strftime('%d/%m/%Y')
-            except:
-                usuario['data_criacao_formatada'] = usuario['data_criacao'][:10] if usuario['data_criacao'] else '—'
+                data_criacao = usuario['data_criacao']
+                
+                # Se for datetime object (PostgreSQL), converter diretamente
+                if isinstance(data_criacao, datetime):
+                    usuario['data_criacao_formatada'] = data_criacao.strftime('%d/%m/%Y')
+                else:
+                    # Se for string (SQLite), parsear e formatar
+                    data_str = str(data_criacao)
+                    # Remover timezone se existir
+                    if 'T' in data_str:
+                        data_str = data_str.split('T')[0]
+                    # Tentar parsear
+                    data_obj = datetime.strptime(data_str, '%Y-%m-%d')
+                    usuario['data_criacao_formatada'] = data_obj.strftime('%d/%m/%Y')
+            except Exception as e:
+                # Fallback: tentar pegar primeiros 10 caracteres se for string
+                if isinstance(usuario['data_criacao'], str):
+                    usuario['data_criacao_formatada'] = usuario['data_criacao'][:10]
+                else:
+                    usuario['data_criacao_formatada'] = '—'
         else:
             usuario['data_criacao_formatada'] = '—'
         
