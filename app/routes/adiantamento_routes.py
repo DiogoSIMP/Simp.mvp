@@ -53,6 +53,17 @@ def _salvar_resposta_json(resposta):
     pass
 
 
+def _formatar_data_envio(data_envio):
+    """Converte data_envio para string, tratando datetime e None"""
+    if data_envio is None:
+        return ''
+    if isinstance(data_envio, datetime):
+        return data_envio.strftime('%Y-%m-%d %H:%M:%S')
+    if isinstance(data_envio, str):
+        return data_envio
+    return str(data_envio)
+
+
 def _aplicar_filtros_solicitacoes(solicitacoes, busca, filtro_dia, filtro_mes, filtro_cpf_status, filtro_sub):
     """Aplica filtros em memória às solicitações"""
     if busca:
@@ -67,13 +78,13 @@ def _aplicar_filtros_solicitacoes(solicitacoes, busca, filtro_dia, filtro_mes, f
     if filtro_dia:
         solicitacoes = [
             s for s in solicitacoes
-            if (s.get('data_envio') or '')[:10] == filtro_dia
+            if _formatar_data_envio(s.get('data_envio'))[:10] == filtro_dia
         ]
     
     if filtro_mes:
         solicitacoes = [
             s for s in solicitacoes
-            if (s.get('data_envio') or '')[5:7] == f"{int(filtro_mes):02d}"
+            if _formatar_data_envio(s.get('data_envio'))[5:7] == f"{int(filtro_mes):02d}"
         ]
     
     if filtro_cpf_status in ('0', '1'):
@@ -116,11 +127,14 @@ def _calcular_valores_dia_solicitacoes(solicitacoes, data_ref):
         return solicitacoes
     
     # Buscar apenas o ÚLTIMO arquivo CSV (mais recente)
+    # Excluir arquivos consolidados (resultados de processamento, não CSVs originais)
     pasta_uploads = get_week_folder(Config.UPLOAD_FOLDER)
     todos_arquivos = [
         os.path.join(pasta_uploads, f)
         for f in os.listdir(pasta_uploads)
-        if f.endswith('.csv') and f != ARQUIVO_ULTIMO_CONSOLIDADO
+        if f.endswith('.csv') 
+        and f != ARQUIVO_ULTIMO_CONSOLIDADO 
+        and f != ARQUIVO_CONSOLIDADO_DIARIO
     ]
     
     if not todos_arquivos:
@@ -146,6 +160,11 @@ def _calcular_valores_dia_solicitacoes(solicitacoes, data_ref):
         
         if df_consolidado is None or df_consolidado.empty:
             print(f"⚠️  Nenhum dado encontrado para a data {data_ref} e entregadores {ids_entregadores}")
+            # Retornar solicitações sem valores calculados (apenas verificar quem solicitou)
+            for s in solicitacoes:
+                s['valor_total_dia'] = 0.0
+                s['valor_60_percent_dia'] = 0.0
+                s['valor_final_dia'] = 0.0
             return solicitacoes
         
         # Criar dicionário de valores por ID do entregador
@@ -188,10 +207,13 @@ def _calcular_valores_dia_solicitacoes(solicitacoes, data_ref):
                 print(f"⚠️  Nenhum valor encontrado para entregador {id_ent} na data {data_ref}")
         
     except Exception as e:
-        print(f"❌ Erro ao calcular valores do dia: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        # Em caso de erro, retornar solicitações sem valores calculados
+        print(f"⚠️  Aviso: Não foi possível calcular valores do CSV para a data {data_ref}: {str(e)}")
+        print(f"   Continuando apenas com verificação de quem solicitou...")
+        # Em caso de erro, retornar solicitações sem valores calculados (apenas verificar quem solicitou)
+        for s in solicitacoes:
+            s['valor_total_dia'] = 0.0
+            s['valor_60_percent_dia'] = 0.0
+            s['valor_final_dia'] = 0.0
     
     return solicitacoes
 
@@ -228,7 +250,7 @@ def init_adiantamento_routes(app):
         
         if os.path.exists(pasta_uploads):
             for f in os.listdir(pasta_uploads):
-                if f.endswith('.csv') and f != ARQUIVO_ULTIMO_CONSOLIDADO:
+                if f.endswith('.csv') and f != ARQUIVO_ULTIMO_CONSOLIDADO and f != ARQUIVO_CONSOLIDADO_DIARIO:
                     caminho_completo = os.path.join(pasta_uploads, f)
                     # Extrair data de upload do nome do arquivo (formato: YYYYMMDD_HHMMSS_nome.csv)
                     try:
@@ -665,7 +687,7 @@ def init_adiantamento_routes(app):
             todos_arquivos = [
                 os.path.join(pasta_uploads, f)
                 for f in os.listdir(pasta_uploads)
-                if f.endswith('.csv') and f != ARQUIVO_ULTIMO_CONSOLIDADO
+                if f.endswith('.csv') and f != ARQUIVO_ULTIMO_CONSOLIDADO and f != ARQUIVO_CONSOLIDADO_DIARIO
             ]
             
             if not todos_arquivos:
@@ -881,11 +903,14 @@ def init_adiantamento_routes(app):
         dias = request.form.getlist("days_enabled")
         dias_str = ",".join(dias) if dias else None
         
+        from app.models.database import get_db_placeholder, is_postgresql_connection
+        
         conn = get_db_connection()
+        placeholder = get_db_placeholder(conn)
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE form_config
-            SET auto_mode = ?, auto_open_time = ?, auto_close_time = ?, days_enabled = ?
+            SET auto_mode = {placeholder}, auto_open_time = {placeholder}, auto_close_time = {placeholder}, days_enabled = {placeholder}
             WHERE id = 1
         """, (modo, abre, fecha, dias_str))
         conn.commit()
@@ -930,8 +955,11 @@ def init_adiantamento_routes(app):
             df_consolidado = pd.read_csv(consolidado_path, encoding='utf-8')
             
             # Buscar dados dos entregadores do banco
+            from app.models.database import get_db_cursor, is_postgresql_connection
+            from app.utils.db_helpers import row_to_dict
+            
             conn = get_db_connection()
-            cursor = conn.cursor()
+            cursor = get_db_cursor(conn)
             
             # Buscar todos os entregadores com suas informações
             # Para chave PIX, buscar a mais recente de cada entregador
@@ -959,8 +987,21 @@ def init_adiantamento_routes(app):
             entregadores_data = cursor.fetchall()
             conn.close()
             
-            # Criar DataFrame de entregadores
-            df_entregadores = pd.DataFrame([dict(row) for row in entregadores_data])
+            # Criar DataFrame de entregadores usando row_to_dict para compatibilidade
+            entregadores_dicts = []
+            for row in entregadores_data:
+                row_dict = row_to_dict(row)
+                if row_dict and isinstance(row_dict, dict):
+                    entregadores_dicts.append(row_dict)
+            
+            if not entregadores_dicts:
+                # Se não houver entregadores, criar DataFrame vazio com as colunas esperadas
+                df_entregadores = pd.DataFrame(columns=[
+                    'id_da_pessoa_entregadora', 'recebedor', 'email', 'cnpj', 
+                    'emissor', 'subpraca', 'chave_pix', 'tipo_de_chave_pix'
+                ])
+            else:
+                df_entregadores = pd.DataFrame(entregadores_dicts)
             
             # Renomear colunas do banco para evitar conflito no merge
             df_entregadores = df_entregadores.rename(columns={
@@ -1068,4 +1109,293 @@ def init_adiantamento_routes(app):
             
         except Exception as e:
             flash(f'Erro ao exportar Excel: {str(e)}', 'adiantamento_error')
+            return redirect(url_for('lista_solicitacoes'))
+    
+    @app.route('/adiantamento/upload-csvs-consolidacao', methods=['POST'])
+    @login_required
+    def upload_csvs_consolidacao():
+        """Faz upload de múltiplos CSVs para consolidação semanal"""
+        try:
+            if 'arquivos' not in request.files:
+                return jsonify({
+                    'success': False,
+                    'message': 'Nenhum arquivo enviado'
+                }), 400
+            
+            arquivos = request.files.getlist('arquivos')
+            arquivos_salvos = []
+            
+            pasta_uploads = get_week_folder(Config.UPLOAD_FOLDER)
+            os.makedirs(pasta_uploads, exist_ok=True)
+            
+            for arquivo in arquivos:
+                if arquivo.filename == '':
+                    continue
+                
+                if not arquivo.filename.endswith('.csv'):
+                    continue
+                
+                # Salvar arquivo com timestamp
+                filename = f"{datetime.now().strftime(FORMATO_DATA_ARQUIVO)}_{arquivo.filename}"
+                caminho_arquivo = os.path.join(pasta_uploads, filename)
+                arquivo.save(caminho_arquivo)
+                arquivos_salvos.append(filename)
+            
+            if not arquivos_salvos:
+                return jsonify({
+                    'success': False,
+                    'message': 'Nenhum arquivo CSV válido foi enviado'
+                }), 400
+            
+            return jsonify({
+                'success': True,
+                'message': f'{len(arquivos_salvos)} arquivo(s) enviado(s) com sucesso',
+                'arquivos_salvos': arquivos_salvos
+            })
+            
+        except Exception as e:
+            print(f"❌ Erro no upload de CSVs: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'message': f'Erro ao fazer upload: {str(e)}'
+            }), 500
+    
+    @app.route('/adiantamento/consolidacao-semanal', methods=['POST'])
+    @login_required
+    def consolidacao_semanal():
+        """Processa consolidação semanal com adiantamentos diários"""
+        try:
+            data = request.get_json()
+            datas_adiantamento = data.get('datas', [])
+            arquivos_selecionados = data.get('arquivos', [])
+            
+            if not datas_adiantamento or not arquivos_selecionados:
+                return jsonify({
+                    'success': False,
+                    'message': 'Selecione pelo menos uma data e um arquivo CSV'
+                }), 400
+            
+            pasta_uploads = get_week_folder(Config.UPLOAD_FOLDER)
+            processador = ProcessadorCSVService()
+            
+            # 1. Processar CSVs selecionados para obter consolidado semanal
+            caminhos_arquivos = [
+                os.path.join(pasta_uploads, arquivo) 
+                for arquivo in arquivos_selecionados
+                if os.path.exists(os.path.join(pasta_uploads, arquivo))
+            ]
+            
+            if not caminhos_arquivos:
+                return jsonify({
+                    'success': False,
+                    'message': 'Nenhum arquivo CSV válido encontrado'
+                }), 400
+            
+            print(f"📊 Processando {len(caminhos_arquivos)} arquivos CSV para consolidação semanal")
+            resultado_semanal = processador.processar_multiplos_csv(
+                caminhos_arquivos,
+                data_filtro=None,
+                ids_entregadores=None,
+                filtrar_por_cadastrados=False
+            )
+            
+            df_semanal = resultado_semanal['consolidado_geral']
+            
+            if df_semanal is None or df_semanal.empty:
+                return jsonify({
+                    'success': False,
+                    'message': 'Nenhum dado encontrado nos arquivos CSV'
+                }), 400
+            
+            # 2. Buscar adiantamentos diários para cada data
+            # Coletar TODOS os IDs de entregadores que solicitaram nas datas selecionadas
+            conn = get_db_connection()
+            from app.models.database import is_postgresql_connection, get_db_cursor, get_db_placeholder
+            is_postgresql = is_postgresql_connection(conn)
+            cursor = get_db_cursor(conn)
+            placeholder = get_db_placeholder(conn)
+            
+            # Converter datas para formato date
+            datas_para_buscar = [datetime.strptime(d, FORMATO_DATA_ISO).date() for d in datas_adiantamento]
+            
+            # Coletar TODOS os IDs de entregadores que solicitaram em qualquer uma das datas
+            todos_ids_solicitantes = set()
+            
+            for data_adiantamento in datas_para_buscar:
+                print(f"🔍 Buscando solicitações para data: {data_adiantamento}")
+                
+                # Buscar solicitações do dia (data_envio = data que o entregador solicitou)
+                if is_postgresql:
+                    cursor.execute(f"""
+                        SELECT s.cpf, e.id_da_pessoa_entregadora
+                        FROM solicitacoes_adiantamento s
+                        LEFT JOIN entregadores e ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                                '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                        WHERE CAST(s.data_envio AS DATE) = {placeholder}::date
+                    """, (data_adiantamento,))
+                else:
+                    cursor.execute(f"""
+                        SELECT s.cpf, e.id_da_pessoa_entregadora
+                        FROM solicitacoes_adiantamento s
+                        LEFT JOIN entregadores e ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                                '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+                        WHERE DATE(s.data_envio) = {placeholder}
+                    """, (data_adiantamento,))
+                
+                solicitacoes_dia = cursor.fetchall()
+                print(f"   📋 Encontradas {len(solicitacoes_dia)} solicitações para {data_adiantamento}")
+                
+                # Coletar IDs dos entregadores que solicitaram neste dia
+                for row in solicitacoes_dia:
+                    if is_postgresql:
+                        id_ent = str(row.get('id_da_pessoa_entregadora', ''))
+                    else:
+                        id_ent = str(row[1] if len(row) > 1 else '')
+                    if id_ent and id_ent != 'None':
+                        todos_ids_solicitantes.add(id_ent)
+            
+            conn.close()
+            
+            print(f"📊 Total de entregadores únicos que solicitaram nas datas selecionadas: {len(todos_ids_solicitantes)}")
+            
+            # Buscar adiantamentos por ID do entregador
+            # IMPORTANTE: Não filtrar por data! Os CSVs têm data_do_periodo_de_referencia (quando trabalhou),
+            # mas a solicitação tem data_envio (quando solicitou). Essas datas são diferentes!
+            # Processamos TODOS os CSVs selecionados para os entregadores que solicitaram
+            adiantamentos_por_id = {}
+            
+            if todos_ids_solicitantes:
+                try:
+                    print(f"🔄 Calculando adiantamentos para {len(todos_ids_solicitantes)} entregadores...")
+                    print(f"   📋 Processando TODOS os CSVs selecionados (sem filtro de data)...")
+                    
+                    # Processar TODOS os CSVs selecionados para os entregadores que solicitaram
+                    # Isso vai dar o valor_final consolidado de todos os dias que eles trabalharam
+                    resultado_adiantamentos = processador.processar_multiplos_csv(
+                        caminhos_arquivos,  # Todos os CSVs selecionados
+                        data_filtro=None,  # SEM filtro de data - processar tudo
+                        ids_entregadores=list(todos_ids_solicitantes),  # Apenas quem solicitou
+                        filtrar_por_cadastrados=False
+                    )
+                    
+                    df_adiantamentos = resultado_adiantamentos.get('consolidado_geral')
+                    if df_adiantamentos is not None and not df_adiantamentos.empty:
+                        print(f"   ✅ Encontrados {len(df_adiantamentos)} entregadores com dados nos CSVs")
+                        # Adicionar valores de adiantamento por ID (valor_final já é consolidado de todos os dias)
+                        for _, row in df_adiantamentos.iterrows():
+                            id_ent = str(row.get('id_da_pessoa_entregadora', ''))
+                            if id_ent:
+                                valor_final = float(row.get('valor_final', 0))
+                                adiantamentos_por_id[id_ent] = valor_final
+                                print(f"      💰 Adiantamento para {id_ent}: R$ {valor_final:.2f}")
+                    else:
+                        print(f"   ⚠️  Nenhum dado encontrado nos CSVs para os entregadores que solicitaram")
+                    
+                except Exception as e:
+                    print(f"⚠️  Erro ao processar CSVs para adiantamentos: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+            
+            print(f"📊 Total de entregadores com adiantamentos calculados: {len(adiantamentos_por_id)}")
+            if adiantamentos_por_id:
+                total_adiantamentos = sum(adiantamentos_por_id.values())
+                print(f"💰 Valor total de adiantamentos: R$ {total_adiantamentos:.2f}")
+            
+            # 3. Adicionar coluna de adiantamentos ao consolidado semanal
+            df_semanal['id_da_pessoa_entregadora'] = df_semanal['id_da_pessoa_entregadora'].astype(str)
+            
+            def calcular_adiantamentos(row):
+                id_ent = str(row.get('id_da_pessoa_entregadora', ''))
+                if id_ent and id_ent != 'None':
+                    return adiantamentos_por_id.get(id_ent, 0.0)
+                return 0.0
+            
+            df_semanal['adiantamentos'] = df_semanal.apply(calcular_adiantamentos, axis=1)
+            
+            # 4. Calcular "A Receber na Semana" = Valor 60% - Adiantamentos
+            # Os adiantamentos já são em valor_final (com desconto de 0,35 aplicado em cada dia)
+            # O valor_60_percent semanal é a soma de todos os dias da semana
+            # Então subtraímos diretamente: valor_60_percent_semanal - adiantamentos (valor_final dos dias que adiantou)
+            df_semanal['a_receber_na_semana'] = (df_semanal['valor_60_percent'] - df_semanal['adiantamentos']).round(2)
+            df_semanal['a_receber_na_semana'] = df_semanal['a_receber_na_semana'].clip(lower=0.0)
+            
+            # 5. Salvar consolidado semanal
+            pasta_relatorios = get_week_folder(Config.RELATORIOS_FOLDER)
+            os.makedirs(pasta_relatorios, exist_ok=True)
+            
+            nome_arquivo = f"consolidado_semanal_{datetime.now().strftime(FORMATO_DATA_ARQUIVO)}.xlsx"
+            caminho_excel = os.path.join(pasta_relatorios, nome_arquivo)
+            
+            # Gerar Excel
+            with pd.ExcelWriter(caminho_excel, engine="openpyxl") as writer:
+                df_semanal.to_excel(writer, sheet_name='Consolidado Semanal', index=False)
+            
+            # Formatar Excel
+            wb = load_workbook(caminho_excel)
+            ws = wb['Consolidado Semanal']
+            
+            # Formatar cabeçalho
+            azul_abjp = "0B5CFF"
+            for cell in ws[1]:
+                cell.fill = PatternFill(start_color=azul_abjp, end_color=azul_abjp, fill_type="solid")
+                cell.font = Font(color="FFFFFF", bold=True)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            
+            # Formatar colunas monetárias
+            colunas_monetarias = ['valor_total', 'valor_60_percent', 'valor_final', 'adiantamentos', 'a_receber_na_semana']
+            for col_idx, col in enumerate(ws.iter_cols(min_row=1, max_row=1), 1):
+                if col[0].value in colunas_monetarias:
+                    for cell in ws.iter_cols(min_col=col_idx, max_col=col_idx, min_row=2):
+                        for c in cell:
+                            if isinstance(c.value, (int, float)):
+                                c.number_format = 'R$ #,##0.00'
+            
+            wb.save(caminho_excel)
+            
+            return jsonify({
+                'success': True,
+                'message': f'Consolidação semanal gerada com sucesso! {len(df_semanal)} entregadores processados.',
+                'redirect_url': url_for('exportar_excel_consolidacao_semanal') + f'?arquivo={nome_arquivo}'
+            })
+            
+        except Exception as e:
+            print(f"❌ Erro na consolidação semanal: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'message': f'Erro ao processar consolidação: {str(e)}'
+            }), 500
+    
+    @app.route('/adiantamento/consolidacao-semanal/download', methods=['GET'])
+    @login_required
+    def exportar_excel_consolidacao_semanal():
+        """Download do Excel de consolidação semanal"""
+        try:
+            arquivo = request.args.get('arquivo')
+            if not arquivo:
+                flash('Arquivo não especificado', 'adiantamento_error')
+                return redirect(url_for('lista_solicitacoes'))
+            
+            pasta_relatorios = get_week_folder(Config.RELATORIOS_FOLDER)
+            caminho_excel = os.path.join(pasta_relatorios, arquivo)
+            
+            if not os.path.exists(caminho_excel):
+                flash('Arquivo não encontrado', 'adiantamento_error')
+                return redirect(url_for('lista_solicitacoes'))
+            
+            return send_file(caminho_excel, as_attachment=True, download_name=arquivo)
+            
+        except Exception as e:
+            flash(f'Erro ao baixar arquivo: {str(e)}', 'adiantamento_error')
             return redirect(url_for('lista_solicitacoes'))

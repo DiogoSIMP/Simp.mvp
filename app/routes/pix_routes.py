@@ -24,6 +24,7 @@ def init_pix_routes(app):
     def form_bancario_enviar():
         nome = request.form.get("nome", "").strip()
         cpf = request.form.get("cpf")
+        email = request.form.get("email", "").strip()
         cnpj = request.form.get("cnpj", "").strip()
         praca = request.form.get("praca", "").strip()
         tipo_chave = request.form.get("tipo_chave_pix", "").strip()
@@ -114,16 +115,17 @@ def init_pix_routes(app):
             
             if not entregador:
                 # Criar registro pendente em historico_pix mesmo sem entregador cadastrado
-                placeholders = ", ".join([placeholder] * 10)
+                placeholders = ", ".join([placeholder] * 11)
                 cursor.execute(f"""
                     INSERT INTO historico_pix
-                    (id_da_pessoa_entregadora, cpf, cnpj, nome, praca, chave_pix, tipo_de_chave_pix, avaliacao, data_registro, status)
+                    (id_da_pessoa_entregadora, cpf, cnpj, nome, email, praca, chave_pix, tipo_de_chave_pix, avaliacao, data_registro, status)
                     VALUES ({placeholders})
                 """, (
                     None,  # id_da_pessoa_entregadora = NULL quando não cadastrado
                     cpf_limpo,  # CPF para identificação
                     cnpj_limpo,  # CNPJ informado
                     nome,  # Nome informado
+                    email,  # E-mail informado
                     praca,  # Praça selecionada
                     chave,
                     tipo_chave,
@@ -144,17 +146,20 @@ def init_pix_routes(app):
             # Gravar chave pendente para entregador cadastrado
             # Se não informou CNPJ no formulário, usa o CNPJ cadastrado do entregador
             cnpj_final = cnpj_limpo if cnpj_limpo else (entregador.get("cnpj") if isinstance(entregador, dict) else entregador[2])
+            # Se não informou e-mail no formulário, tenta usar o e-mail cadastrado do entregador
+            email_final = email if email else (entregador.get("email") if isinstance(entregador, dict) else None)
             
-            placeholders = ", ".join([placeholder] * 10)
+            placeholders = ", ".join([placeholder] * 11)
             cursor.execute(f"""
                 INSERT INTO historico_pix
-                (id_da_pessoa_entregadora, cpf, cnpj, nome, praca, chave_pix, tipo_de_chave_pix, avaliacao, data_registro, status)
+                (id_da_pessoa_entregadora, cpf, cnpj, nome, email, praca, chave_pix, tipo_de_chave_pix, avaliacao, data_registro, status)
                 VALUES ({placeholders})
             """, (
                 id_ent,
                 cpf_limpo,  # Também salvar CPF para facilitar identificação
                 cnpj_final,  # CNPJ informado ou do cadastro
                 nome,  # Nome informado
+                email_final,  # E-mail informado ou do cadastro
                 praca,  # Praça selecionada
                 chave,
                 tipo_chave,

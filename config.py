@@ -6,19 +6,19 @@ load_dotenv()
 
 class Config:
     # ======== CONFIGURAÇÕES BÁSICAS ========
-    SECRET_KEY = os.getenv('SECRET_KEY', 'sua_chave_secreta_aqui')
-    DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+    SECRET_KEY = os.getenv('SECRET_KEY')
+    DEBUG = os.getenv('DEBUG')
     
     # ======== CONFIGURAÇÕES DO BANCO DE DADOS ========
     # PostgreSQL (produção)
-    DB_HOST = os.getenv('DB_HOST', 'localhost')
-    DB_PORT = os.getenv('DB_PORT', '5432')
-    DB_NAME = os.getenv('DB_NAME', 'simp_db')
-    DB_USER = os.getenv('DB_USER', 'postgres')
-    DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+    DB_HOST = os.getenv('DB_HOST')
+    DB_PORT = os.getenv('DB_PORT')
+    DB_NAME = os.getenv('DB_NAME')
+    DB_USER = os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('DB_PASSWORD')
     
     # SQLite (fallback para desenvolvimento)
-    USE_POSTGRESQL = os.getenv('USE_POSTGRESQL', 'True').lower() == 'true'
+    USE_POSTGRESQL = os.getenv('USE_POSTGRESQL')
     DATABASE = 'Drives_abjp.db'  # Mantido para compatibilidade
 
     # ======== CAMINHOS DE PASTAS PRINCIPAIS ========
@@ -38,13 +38,13 @@ class Config:
     ITEMS_PER_PAGE = 50
     
     # ======== CONFIGURAÇÕES DE E-MAIL (2FA) ========
-    MAIL_SERVER = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-    MAIL_PORT = int(os.getenv('MAIL_PORT', 587))
-    MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
-    MAIL_USE_SSL = os.getenv('MAIL_USE_SSL', 'False').lower() == 'true'
-    MAIL_USERNAME = os.getenv('MAIL_USERNAME', '')
-    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
-    MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@simp.com')
+    MAIL_SERVER = os.getenv('MAIL_SERVER')
+    MAIL_PORT = int(os.getenv('MAIL_PORT'))
+    MAIL_USE_TLS = os.getenv('MAIL_USE_TLS')
+    MAIL_USE_SSL = os.getenv('MAIL_USE_SSL')
+    MAIL_USERNAME = os.getenv('MAIL_USERNAME')
+    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER')
     
     # Tempo de expiração do código 2FA (em minutos)
     TWO_FA_CODE_EXPIRY = 10

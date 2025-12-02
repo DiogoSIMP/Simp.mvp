@@ -453,6 +453,18 @@
             recebedorInput.value = data.nome;
         }
 
+        // Preencher e-mail
+        const emailInput = document.getElementById('email');
+        if (data.email && emailInput && !emailInput.value.trim()) {
+            emailInput.value = data.email;
+        }
+
+        // Preencher CNPJ
+        const cnpjInput = document.getElementById('cnpj');
+        if (data.cnpj && cnpjInput && !cnpjInput.value.trim()) {
+            cnpjInput.value = data.cnpj;
+        }
+
         const pracaNormalizada = mapPracaFormulario(data.praca);
         const subpracaFormulario = data.subpraca || null;
         if (pracaNormalizada && pracaSelect) {

@@ -66,16 +66,32 @@ class ProcessadorCSVService:
                 if coluna not in df.columns:
                     raise ValueError(f"Coluna obrigatória ausente: {coluna}")
             
-            # Processar dados
-            df["descricao"] = df["descricao"].astype(str).str.lower().fillna("")
-            df["valor"] = (
-                df["valor"].astype(str)
-                .str.replace(".", "")
-                .str.replace(",", ".")
-                .astype(float)
-            )
+            # Processar dados - PRESERVAR descrição original antes de converter para lowercase
+            df["descricao_original"] = df["descricao"].astype(str).fillna("")
+            df["descricao"] = df["descricao_original"].str.lower().fillna("")
             
+            # Converter valores: verificar se já é numérico ou se precisa converter formato brasileiro
+            if df["valor"].dtype in ['float64', 'int64', 'float', 'int']:
+                # Já é numérico (formato internacional com ponto decimal)
+                df["valor"] = pd.to_numeric(df["valor"], errors='coerce').fillna(0.0)
+            else:
+                # É string - pode estar no formato brasileiro (vírgula como separador decimal)
+                # Verificar se há vírgula (formato brasileiro) ou se é só número
+                df["valor"] = (
+                    df["valor"].astype(str)
+                    .str.replace(".", "", regex=False)  # Remove separador de milhar
+                    .str.replace(",", ".", regex=False)  # Converte vírgula para ponto decimal
+                    .astype(float)
+                )
+            
+            # Classificar tipo de valor - TODAS as ocorrências serão classificadas
             df["tipo_valor"] = df["descricao"].apply(self.classificar_tipo)
+            
+            # Verificar se há valores NaN ou vazios que não foram classificados
+            df["tipo_valor"] = df["tipo_valor"].fillna("outros")
+            
+            # Garantir que valores NaN sejam 0
+            df["valor"] = df["valor"].fillna(0.0)
             
             print(f"   ✅ Arquivo processado com sucesso")
             return df
@@ -118,17 +134,33 @@ class ProcessadorCSVService:
                     except Exception as e:
                         print(f"   ⚠️  Erro ao filtrar por data na consolidação: {str(e)}")
             
-            # Pivot table para tipos de valores
+            # Verificar se há descrições não reconhecidas (classificadas como "outros")
+            # Agrupar descrições originais para "outros" para referência
+            # Usar "descricao_original" se existir, senão usar "descricao"
+            col_descricao = "descricao_original" if "descricao_original" in df.columns else "descricao"
+            outros_descricoes = df[df["tipo_valor"] == "outros"].groupby("id_da_pessoa_entregadora")[col_descricao].apply(
+                lambda x: " | ".join(sorted(set(x.dropna().astype(str)))) if len(x.dropna()) > 0 else ""
+            ).reset_index()
+            outros_descricoes.columns = ["id_da_pessoa_entregadora", "descricoes_outros"]
+            
+            # Pivot table para tipos de valores - SOMAR TODAS as ocorrências
             pivot = (
                 df.pivot_table(
                     index=["id_da_pessoa_entregadora", "recebedor"],
                     values="valor",
                     columns="tipo_valor",
-                    aggfunc="sum",
+                    aggfunc="sum",  # Soma todas as ocorrências
                     fill_value=0
                 )
                 .reset_index()
             )
+            
+            # Adicionar descrições de "outros" ao pivot
+            if not outros_descricoes.empty:
+                pivot = pd.merge(pivot, outros_descricoes, on="id_da_pessoa_entregadora", how="left")
+                pivot["descricoes_outros"] = pivot["descricoes_outros"].fillna("")
+            else:
+                pivot["descricoes_outros"] = ""
             
             # Informações de praças
             sub_data = (
@@ -147,10 +179,10 @@ class ProcessadorCSVService:
             consolidado['subpracas'] = consolidado['subpracas'].fillna("").astype(str)
             consolidado['pracas'] = consolidado['pracas'].fillna("").astype(str)
             
-            # Tipos de valor que entram no cálculo (seguindo EXATAMENTE a lógica do arquivo de referência)
-            # Nota: "tempo_espera" é classificado mas NÃO entra no valor_total (conforme arquivo de referência)
-            tipos_valor_calculo = ["corridas", "gorjeta", "promo", "online_time", "rotas_com_ocorrencia", "outros"]
-            tipos_valor_exibicao = tipos_valor_calculo + ["tempo_espera"]  # tempo_espera só para exibição, não entra no total
+            # Tipos de valor que entram no cálculo
+            # tempo_espera TAMBÉM entra no valor_total
+            tipos_valor_calculo = ["corridas", "gorjeta", "promo", "online_time", "rotas_com_ocorrencia", "tempo_espera", "outros"]
+            tipos_valor_exibicao = tipos_valor_calculo  # Todos os tipos são exibidos
             
             # Garantir que todas as colunas existam
             for tipo in tipos_valor_exibicao:
@@ -161,14 +193,15 @@ class ProcessadorCSVService:
             for col in tipos_valor_exibicao:
                 consolidado[col] = pd.to_numeric(consolidado[col], errors='coerce').fillna(0.0)
             
-            # Calcular valor total (seguindo exatamente a lógica do arquivo de referência)
-            # Soma apenas os tipos que entram no cálculo (sem tempo_espera)
+            # Calcular valor total
+            # Soma todos os tipos que entram no cálculo (incluindo tempo_espera)
             consolidado["valor_total"] = (
                 consolidado.get("corridas", 0)
                 + consolidado.get("gorjeta", 0)
                 + consolidado.get("promo", 0)
                 + consolidado.get("online_time", 0)
                 + consolidado.get("rotas_com_ocorrencia", 0)
+                + consolidado.get("tempo_espera", 0)
                 + consolidado.get("outros", 0)
             )
             
@@ -222,15 +255,38 @@ class ProcessadorCSVService:
     
     def _obter_entregadores_cadastrados(self):
         """Obtém a lista de IDs dos entregadores cadastrados no banco"""
+        from app.models.database import get_db_connection, is_postgresql_connection, get_db_cursor, get_db_placeholder
+        
         conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        is_postgresql = is_postgresql_connection(conn)
+        placeholder = get_db_placeholder(conn)
+        
         try:
-            resultados = conn.execute('''
-                SELECT id_da_pessoa_entregadora 
-                FROM entregadores 
-                WHERE status = "Ativo"
-            ''').fetchall()
+            if is_postgresql:
+                cursor.execute(f"""
+                    SELECT id_da_pessoa_entregadora 
+                    FROM entregadores 
+                    WHERE status = {placeholder}
+                """, ('Ativo',))
+            else:
+                cursor.execute("""
+                    SELECT id_da_pessoa_entregadora 
+                    FROM entregadores 
+                    WHERE status = ?
+                """, ('Ativo',))
             
-            return [row['id_da_pessoa_entregadora'] for row in resultados]
+            resultados = cursor.fetchall()
+            
+            # Converter para lista de IDs
+            ids = []
+            for row in resultados:
+                if is_postgresql:
+                    ids.append(row['id_da_pessoa_entregadora'])
+                else:
+                    ids.append(row['id_da_pessoa_entregadora'])
+            
+            return ids
             
         except Exception as e:
             print(f"Erro ao buscar entregadores cadastrados: {str(e)}")
@@ -348,7 +404,26 @@ class ProcessadorCSVService:
             entregadores_cadastrados = self._obter_entregadores_cadastrados()
         
         if df_completo.empty:
-            raise Exception("Nenhum dado encontrado para os entregadores")
+            # Se filtrar_por_cadastrados=True e não houver dados, retornar DataFrame vazio em vez de erro
+            if filtrar_por_cadastrados or ids_entregadores:
+                print(f"⚠️  Nenhum dado encontrado para os entregadores especificados")
+                # Retornar estrutura vazia em vez de erro
+                df_vazio = pd.DataFrame(columns=['id_da_pessoa_entregadora', 'recebedor', 'valor_total', 'valor_60_percent', 'valor_final'])
+                return {
+                    'df_completo': pd.DataFrame(),
+                    'consolidado_geral': df_vazio,
+                    'total_entregadores': 0,
+                    'valor_total_geral': 0.0,
+                    'data_processamento': datetime.now().strftime('%d/%m/%Y %H:%M'),
+                    'erros': erros,
+                    'total_arquivos': len(lista_arquivos),
+                    'arquivos_sucesso': len(dataframes),
+                    'arquivos_com_erro': len(erros),
+                    'total_entregadores_cadastrados': len(entregadores_cadastrados) if entregadores_cadastrados else 0,
+                    'entregadores_com_dados': 0
+                }
+            else:
+                raise Exception("Nenhum dado encontrado para os entregadores")
         
         # Consolidar entregadores (passar data_filtro se especificada)
         consolidado_geral = self.consolidar_entregadores(df_completo, data_filtro=data_filtro)

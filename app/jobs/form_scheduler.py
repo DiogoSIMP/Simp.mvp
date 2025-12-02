@@ -1,6 +1,6 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, time
 from app.models.database import get_db_connection
 from app.utils.form_control import (
     get_form_config,
@@ -8,6 +8,7 @@ from app.utils.form_control import (
     fechar_formulario
 )
 from app.utils.form_logs import registrar_log
+from app.services.backup_service import executar_backup_diario
 
 
 # ======================================
@@ -23,6 +24,25 @@ scheduler = BackgroundScheduler(executors=executors)
 # ======================================
 # FUNÇÃO AUXILIAR
 # ======================================
+def _normalizar_horario(horario):
+    """Converte horário para string no formato HH:MM"""
+    if horario is None:
+        return None
+    if isinstance(horario, time):
+        return horario.strftime("%H:%M")
+    if isinstance(horario, str):
+        # Se já for string, retornar apenas HH:MM (pode ter segundos)
+        return horario[:5] if len(horario) >= 5 else horario
+    # Para qualquer outro tipo, converter para string primeiro
+    horario_str = str(horario)
+    # Se for um objeto datetime, extrair apenas hora:minuto
+    if hasattr(horario, 'strftime'):
+        try:
+            return horario.strftime("%H:%M")
+        except:
+            pass
+    return horario_str[:5] if len(horario_str) >= 5 else horario_str
+
 def _set_form_status(aberto: bool, motivo: str):
     cfg = get_form_config()
     print("📄 CONFIG DO BANCO:", cfg)
@@ -77,7 +97,15 @@ def verificar_horario_fixo(cfg):
     if not hora_abre or not hora_fecha:
         return
 
-    if hora_abre <= hora_atual <= hora_fecha:
+    # Normalizar horários para string no formato HH:MM
+    hora_abre_str = _normalizar_horario(hora_abre)
+    hora_fecha_str = _normalizar_horario(hora_fecha)
+
+    if not hora_abre_str or not hora_fecha_str:
+        return
+
+    # Comparação de strings no formato HH:MM (funciona lexicograficamente)
+    if hora_abre_str <= hora_atual <= hora_fecha_str:
         _set_form_status(True, "Dentro do horário automático")
     else:
         _set_form_status(False, "Fora do horário automático")
@@ -149,7 +177,18 @@ def iniciar_scheduler():
         id="job_verificar_agendamentos",
         replace_existing=True
     )
+    
+    # Job de backup diário às 22h00
+    scheduler.add_job(
+        executar_backup_diario,
+        "cron",
+        hour=22,
+        minute=0,
+        id="job_backup_diario",
+        replace_existing=True
+    )
 
     scheduler.start()
     _scheduler_started = True
     print("🟢 Scheduler iniciado (30s por ciclo).")
+    print("💾 Backup diário agendado para 22h00.")

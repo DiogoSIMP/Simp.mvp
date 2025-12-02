@@ -188,6 +188,7 @@ def init_db():
                     avaliacao INTEGER,
                     praca VARCHAR(255),
                     cnpj VARCHAR(18),
+                    email VARCHAR(255),
                     FOREIGN KEY (id_da_pessoa_entregadora)
                         REFERENCES entregadores (id_da_pessoa_entregadora)
                 );
@@ -204,7 +205,8 @@ def init_db():
                     'nome': 'VARCHAR(255)',
                     'avaliacao': 'INTEGER',
                     'praca': 'VARCHAR(255)',
-                    'cnpj': 'VARCHAR(18)'
+                    'cnpj': 'VARCHAR(18)',
+                    'email': 'VARCHAR(255)'
                 }
                 
                 for col_name, col_def in required_columns.items():
@@ -227,6 +229,7 @@ def init_db():
                 avaliacao INTEGER,
                 praca TEXT,
                 cnpj TEXT,
+                email TEXT,
                 FOREIGN KEY (id_da_pessoa_entregadora)
                     REFERENCES entregadores (id_da_pessoa_entregadora)
             );
@@ -260,11 +263,25 @@ def init_db():
                 """)
             else:
                 # Tabela existe, verificar e adicionar colunas faltantes
-                if 'data_envio' not in existing_columns:
-                    try:
-                        cursor.execute("ALTER TABLE solicitacoes_adiantamento ADD COLUMN data_envio TIMESTAMP")
-                    except Exception as e:
-                        print(f"⚠️ Aviso ao adicionar coluna data_envio: {e}")
+                required_columns = {
+                    'email': 'VARCHAR(255)',
+                    'nome': 'VARCHAR(255)',
+                    'cpf': 'VARCHAR(14)',
+                    'praca': 'VARCHAR(255)',
+                    'valor_informado': 'DECIMAL(10, 2)',
+                    'concorda': 'TEXT',
+                    'data_envio': 'TIMESTAMP',
+                    'cpf_bate': 'INTEGER DEFAULT 0',
+                    'dados_json': 'JSONB'
+                }
+                
+                for col_name, col_def in required_columns.items():
+                    if col_name not in existing_columns:
+                        try:
+                            cursor.execute(f"ALTER TABLE solicitacoes_adiantamento ADD COLUMN {col_name} {col_def}")
+                            print(f"✅ Coluna {col_name} adicionada à tabela solicitacoes_adiantamento")
+                        except Exception as e:
+                            print(f"⚠️ Aviso ao adicionar coluna {col_name}: {e}")
         else:
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS solicitacoes_adiantamento (
@@ -396,7 +413,7 @@ def init_db():
                     email VARCHAR(255) UNIQUE NOT NULL,
                     senha_hash VARCHAR(255) NOT NULL,
                     nome_completo VARCHAR(255) NOT NULL,
-                    role VARCHAR(50) NOT NULL CHECK(role IN ('Master', 'Adm', 'Operacional')),
+                    role VARCHAR(50) NOT NULL CHECK(role IN ('Master', 'Adm', 'Lider', 'Operacional')),
                     ativo INTEGER DEFAULT 1,
                     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     ultimo_acesso TIMESTAMP,
@@ -425,6 +442,53 @@ def init_db():
                         except Exception as e:
                             print(f"⚠️ Aviso ao adicionar coluna {col_name}: {e}")
                 
+                # Migração: Se existe coluna 'nome' NOT NULL, torná-la nullable ou removê-la
+                # A coluna 'nome' foi substituída por 'nome_completo'
+                if 'nome' in existing_columns:
+                    try:
+                        # Verificar se a coluna é NOT NULL
+                        cursor.execute("""
+                            SELECT is_nullable 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'usuarios' AND column_name = 'nome'
+                        """)
+                        nome_nullable = cursor.fetchone()
+                        if nome_nullable and nome_nullable[0] == 'NO':
+                            # Preencher valores NULL com nome_completo ANTES de tornar nullable
+                            cursor.execute("""
+                                UPDATE usuarios 
+                                SET nome = COALESCE(nome, nome_completo) 
+                                WHERE nome IS NULL AND nome_completo IS NOT NULL
+                            """)
+                            print("✅ Valores NULL da coluna 'nome' preenchidos com 'nome_completo'")
+                            # Tornar nullable
+                            cursor.execute("ALTER TABLE usuarios ALTER COLUMN nome DROP NOT NULL")
+                            print("✅ Coluna 'nome' tornada nullable (migração)")
+                            conn.commit()
+                    except Exception as e:
+                        print(f"⚠️ Aviso ao migrar coluna 'nome': {e}")
+                        conn.rollback()
+                
+                # Migração: Se existe coluna 'senha' NOT NULL, torná-la nullable
+                # A coluna 'senha' foi substituída por 'senha_hash'
+                if 'senha' in existing_columns:
+                    try:
+                        # Verificar se a coluna é NOT NULL
+                        cursor.execute("""
+                            SELECT is_nullable 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'usuarios' AND column_name = 'senha'
+                        """)
+                        senha_nullable = cursor.fetchone()
+                        if senha_nullable and senha_nullable[0] == 'NO':
+                            # Tornar nullable (não precisamos preencher, pois senha_hash já tem o valor)
+                            cursor.execute("ALTER TABLE usuarios ALTER COLUMN senha DROP NOT NULL")
+                            print("✅ Coluna 'senha' tornada nullable (migração)")
+                            conn.commit()
+                    except Exception as e:
+                        print(f"⚠️ Aviso ao migrar coluna 'senha': {e}")
+                        conn.rollback()
+                
                 # Adicionar constraints UNIQUE se não existirem
                 try:
                     cursor.execute("""
@@ -440,6 +504,54 @@ def init_db():
                         cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS usuarios_email_key ON usuarios(email)")
                 except Exception as e:
                     print(f"⚠️ Aviso ao adicionar constraints UNIQUE: {e}")
+                
+                # Migração: Atualizar CHECK constraint para incluir 'Lider'
+                try:
+                    # Verificar se a constraint atual existe e precisa ser atualizada
+                    cursor.execute("""
+                        SELECT constraint_name, check_clause
+                        FROM information_schema.check_constraints
+                        WHERE constraint_name LIKE '%role%' 
+                        AND constraint_schema = current_schema()
+                    """)
+                    role_constraints = cursor.fetchall()
+                    
+                    # Verificar se já existe a constraint usuarios_role_check com 'Lider'
+                    constraint_ja_existe = False
+                    constraint_atualizada = False
+                    
+                    for constraint_name, check_clause in role_constraints:
+                        if constraint_name == 'usuarios_role_check' and 'Lider' in str(check_clause):
+                            constraint_ja_existe = True
+                            constraint_atualizada = True
+                            break
+                        elif 'Lider' not in str(check_clause):
+                            # Remover constraint antiga sem 'Lider'
+                            cursor.execute(f"ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS {constraint_name}")
+                            print(f"✅ Constraint antiga removida: {constraint_name}")
+                    
+                    # Adicionar nova constraint com 'Lider' apenas se não existir
+                    if not constraint_ja_existe:
+                        cursor.execute("""
+                            ALTER TABLE usuarios 
+                            ADD CONSTRAINT usuarios_role_check 
+                            CHECK (role IN ('Master', 'Adm', 'Lider', 'Operacional'))
+                        """)
+                        print("✅ Constraint de role atualizada para incluir 'Lider'")
+                        constraint_atualizada = True
+                    elif constraint_atualizada:
+                        print("✅ Constraint de role já está atualizada com 'Lider'")
+                    
+                    conn.commit()
+                except Exception as e:
+                    # Se a constraint já existe ou não pode ser criada, continuar silenciosamente
+                    error_msg = str(e).lower()
+                    if any(term in error_msg for term in ['already exists', 'duplicate', 'já existe', 'duplicado']):
+                        # Constraint já existe, não é um erro
+                        pass
+                    else:
+                        print(f"⚠️ Aviso ao atualizar constraint de role: {e}")
+                    conn.rollback()
         else:
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
@@ -448,7 +560,7 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 senha_hash TEXT NOT NULL,
                 nome_completo TEXT NOT NULL,
-                role TEXT NOT NULL CHECK(role IN ('Master', 'Adm', 'Operacional')),
+                role TEXT NOT NULL CHECK(role IN ('Master', 'Adm', 'Lider', 'Operacional')),
                 ativo INTEGER DEFAULT 1,
                 data_criacao TEXT DEFAULT CURRENT_TIMESTAMP,
                 ultimo_acesso TEXT,
@@ -606,25 +718,94 @@ def init_db():
 
         # === 📊 RESULTADOS DE PROCESSAMENTO (substitui ultimo_resultado.json) ===
         if is_postgresql:
+            # Verificar se a tabela existe e tem as colunas corretas
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS processamento_resultados (
-                id SERIAL PRIMARY KEY,
-                pasta_uploads VARCHAR(500) NOT NULL,
-                data_processamento TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                total_entregadores INTEGER DEFAULT 0,
-                valor_total_geral DECIMAL(15, 2) DEFAULT 0,
-                total_arquivos INTEGER DEFAULT 0,
-                arquivos_sucesso INTEGER DEFAULT 0,
-                arquivos_com_erro INTEGER DEFAULT 0,
-                total_entregadores_cadastrados INTEGER DEFAULT 0,
-                entregadores_com_dados INTEGER DEFAULT 0,
-                erros TEXT,
-                dados_json JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(pasta_uploads)
-            );
-            CREATE INDEX IF NOT EXISTS idx_processamento_data ON processamento_resultados(data_processamento);
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'processamento_resultados'
             """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if not existing_columns:
+                # Tabela não existe, criar
+                cursor.execute("""
+                CREATE TABLE processamento_resultados (
+                    id SERIAL PRIMARY KEY,
+                    pasta_uploads VARCHAR(500) NOT NULL,
+                    data_processamento TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    total_entregadores INTEGER DEFAULT 0,
+                    valor_total_geral DECIMAL(15, 2) DEFAULT 0,
+                    total_arquivos INTEGER DEFAULT 0,
+                    arquivos_sucesso INTEGER DEFAULT 0,
+                    arquivos_com_erro INTEGER DEFAULT 0,
+                    total_entregadores_cadastrados INTEGER DEFAULT 0,
+                    entregadores_com_dados INTEGER DEFAULT 0,
+                    erros TEXT,
+                    dados_json JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(pasta_uploads)
+                );
+                CREATE INDEX IF NOT EXISTS idx_processamento_data ON processamento_resultados(data_processamento);
+                """)
+            else:
+                # Tabela existe, verificar e adicionar colunas faltantes
+                required_columns = {
+                    'pasta_uploads': 'VARCHAR(500)',
+                    'data_processamento': 'TIMESTAMP',
+                    'total_entregadores': 'INTEGER',
+                    'valor_total_geral': 'DECIMAL(15, 2)',
+                    'total_arquivos': 'INTEGER',
+                    'arquivos_sucesso': 'INTEGER',
+                    'arquivos_com_erro': 'INTEGER',
+                    'total_entregadores_cadastrados': 'INTEGER',
+                    'entregadores_com_dados': 'INTEGER',
+                    'erros': 'TEXT',
+                    'dados_json': 'JSONB',
+                    'created_at': 'TIMESTAMP'
+                }
+                
+                for col_name, col_def in required_columns.items():
+                    if col_name not in existing_columns:
+                        try:
+                            cursor.execute(f"ALTER TABLE processamento_resultados ADD COLUMN {col_name} {col_def}")
+                            print(f"✅ Coluna {col_name} adicionada à tabela processamento_resultados")
+                        except Exception as e:
+                            print(f"⚠️ Aviso ao adicionar coluna {col_name}: {e}")
+                
+                # Adicionar constraint UNIQUE em pasta_uploads se não existir
+                if 'pasta_uploads' in existing_columns:
+                    try:
+                        cursor.execute("""
+                            DO $$ 
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint 
+                                    WHERE conrelid = 'processamento_resultados'::regclass 
+                                    AND contype = 'u' 
+                                    AND conkey::text LIKE '%pasta_uploads%'
+                                ) THEN
+                                    ALTER TABLE processamento_resultados 
+                                    ADD CONSTRAINT processamento_resultados_pasta_uploads_key UNIQUE (pasta_uploads);
+                                END IF;
+                            EXCEPTION WHEN OTHERS THEN
+                                NULL;
+                            END $$;
+                        """)
+                    except Exception as e:
+                        print(f"⚠️ Aviso ao adicionar constraint UNIQUE em pasta_uploads: {e}")
+                
+                # Criar índice se não existir
+                try:
+                    cursor.execute("""
+                        DO $$ 
+                        BEGIN
+                            CREATE INDEX IF NOT EXISTS idx_processamento_data ON processamento_resultados(data_processamento);
+                        EXCEPTION WHEN OTHERS THEN
+                            NULL;
+                        END $$;
+                    """)
+                except Exception as e:
+                    print(f"⚠️ Aviso ao criar índice: {e}")
         else:
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS processamento_resultados (
@@ -667,6 +848,162 @@ def init_db():
                 dados_json TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 expires_at TEXT
+            );
+            """)
+
+        # === 💾 TABELAS DE BACKUP DIÁRIO ===
+        if is_postgresql:
+            # Backup de Entregadores (cadastro)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_entregadores (
+                id SERIAL PRIMARY KEY,
+                backup_date DATE NOT NULL,
+                id_da_pessoa_entregadora VARCHAR(255) NOT NULL,
+                recebedor VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                cpf VARCHAR(14),
+                cnpj VARCHAR(18),
+                praca VARCHAR(255),
+                subpraca VARCHAR(255),
+                emissor VARCHAR(255),
+                status VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(backup_date, id_da_pessoa_entregadora)
+            );
+            CREATE INDEX IF NOT EXISTS idx_backup_entregadores_date ON backup_entregadores(backup_date);
+            """)
+            
+            # Backup de Solicitações de Adiantamento (quem solicitou diário)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_solicitacoes_adiantamento (
+                id SERIAL PRIMARY KEY,
+                backup_date DATE NOT NULL,
+                original_id INTEGER NOT NULL,
+                email VARCHAR(255),
+                nome VARCHAR(255),
+                cpf VARCHAR(14),
+                praca VARCHAR(255),
+                valor_informado DECIMAL(10, 2),
+                concorda TEXT,
+                data_envio TIMESTAMP,
+                cpf_bate INTEGER DEFAULT 0,
+                dados_json JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(backup_date, original_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_backup_solicitacoes_date ON backup_solicitacoes_adiantamento(backup_date);
+            """)
+            
+            # Backup de Histórico PIX (forms bancários)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_historico_pix (
+                id SERIAL PRIMARY KEY,
+                backup_date DATE NOT NULL,
+                original_id INTEGER NOT NULL,
+                id_da_pessoa_entregadora VARCHAR(255),
+                cpf VARCHAR(14),
+                chave_pix VARCHAR(255),
+                tipo_de_chave_pix VARCHAR(50),
+                data_registro TIMESTAMP,
+                status VARCHAR(50),
+                nome VARCHAR(255),
+                avaliacao INTEGER,
+                praca VARCHAR(255),
+                cnpj VARCHAR(18),
+                email VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(backup_date, original_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_backup_pix_date ON backup_historico_pix(backup_date);
+            """)
+            
+            # Log de Backups
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_logs (
+                id SERIAL PRIMARY KEY,
+                backup_date DATE NOT NULL UNIQUE,
+                total_entregadores INTEGER DEFAULT 0,
+                total_solicitacoes INTEGER DEFAULT 0,
+                total_historico_pix INTEGER DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'sucesso',
+                mensagem TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_backup_logs_date ON backup_logs(backup_date);
+            """)
+        else:
+            # Backup de Entregadores (cadastro)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_entregadores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_date TEXT NOT NULL,
+                id_da_pessoa_entregadora TEXT NOT NULL,
+                recebedor TEXT NOT NULL,
+                email TEXT,
+                cpf TEXT,
+                cnpj TEXT,
+                praca TEXT,
+                subpraca TEXT,
+                emissor TEXT,
+                status TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(backup_date, id_da_pessoa_entregadora)
+            );
+            """)
+            
+            # Backup de Solicitações de Adiantamento
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_solicitacoes_adiantamento (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_date TEXT NOT NULL,
+                original_id INTEGER NOT NULL,
+                email TEXT,
+                nome TEXT,
+                cpf TEXT,
+                praca TEXT,
+                valor_informado REAL,
+                concorda TEXT,
+                data_envio TEXT,
+                cpf_bate INTEGER DEFAULT 0,
+                dados_json TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(backup_date, original_id)
+            );
+            """)
+            
+            # Backup de Histórico PIX
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_historico_pix (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_date TEXT NOT NULL,
+                original_id INTEGER NOT NULL,
+                id_da_pessoa_entregadora TEXT,
+                cpf TEXT,
+                chave_pix TEXT,
+                tipo_de_chave_pix TEXT,
+                data_registro TEXT,
+                status TEXT,
+                nome TEXT,
+                avaliacao INTEGER,
+                praca TEXT,
+                cnpj TEXT,
+                email TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(backup_date, original_id)
+            );
+            """)
+            
+            # Log de Backups
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_date TEXT NOT NULL UNIQUE,
+                total_entregadores INTEGER DEFAULT 0,
+                total_solicitacoes INTEGER DEFAULT 0,
+                total_historico_pix INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'sucesso',
+                mensagem TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             """)
 

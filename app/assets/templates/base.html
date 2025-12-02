@@ -58,10 +58,12 @@
           </div>
           <nav class="menu sidebar-menu" data-menu="operacional" style="display: block;">
 
+            {% if session.get('user_role') in ['Master', 'Adm'] %}
             <a class="menu-item {% if request.endpoint == 'processar_csv' %}active{% endif %}"
               href="{{ url_for('processar_csv') }}">
               <i class="fa-solid fa-chart-line"></i><span>Dashboard</span>
             </a>
+            {% endif %}
 
             <a class="menu-item {% if request.endpoint == 'entregadores' %}active{% endif %}"
               href="{{ url_for('entregadores') }}">
@@ -79,17 +81,20 @@
               <i class="fa-solid fa-money-bill-transfer"></i>
               <span>Adiantamento</span>
             </a>
+            
+            {% if session.get('user_role') in ['Master', 'Adm'] %}
             <a class="menu-item {% if request.endpoint == 'listar_lotes' %}active{% endif %}"
               href="{{ url_for('listar_lotes') }}">
               <i class="fa-solid fa-layer-group"></i>
               <span>Lotes</span>
             </a>
+            {% endif %}
 
           </nav>
         </div>
 
-        <!-- GRUPO: FINANCEIRO (apenas Master e Adm) -->
-        {% if session.get('user_role') in ['Master', 'Adm'] %}
+        <!-- GRUPO: FINANCEIRO (Master, Adm e Lider) -->
+        {% if session.get('user_role') in ['Master', 'Adm', 'Lider'] %}
         <div class="sidebar-group">
           <div class="sidebar-group-title collapsed" onclick="toggleSidebarGroup(this)" data-group="financeiro">
             <span>Financeiro</span>

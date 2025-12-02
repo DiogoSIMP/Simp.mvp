@@ -76,36 +76,52 @@
         </thead>
 
         <tbody>
-            {% for r in logs %}
-            <tr>
+            {% if logs %}
+                {% for r in logs %}
+                <tr>
 
-                <td>{{ r.cpf or '—' }}</td>
-                <td>{{ r.chave_pix or '—' }}</td>
-                <td>{{ r.tipo_chave }}</td>
+                    <td>{{ r.cpf or '—' }}</td>
+                    <td>{{ r.chave_pix or '—' }}</td>
+                    <td>{{ r.tipo_chave or '—' }}</td>
 
-                <!-- MOTIVO COM BADGE -->
-                <td>
-                    {% if "duplicada" in r.motivo.lower() %}
-                        <span class="badge-critico">{{ r.motivo }}</span>
-                    {% elif "não encontrado" in r.motivo.lower() %}
-                        <span class="badge-alerta">{{ r.motivo }}</span>
-                    {% else %}
-                        {{ r.motivo }}
-                    {% endif %}
-                </td>
+                    <!-- MOTIVO COM BADGE -->
+                    <td>
+                        {% if r.motivo %}
+                            {% if "duplicada" in r.motivo.lower() %}
+                                <span class="badge-critico">{{ r.motivo }}</span>
+                            {% elif "não encontrado" in r.motivo.lower() %}
+                                <span class="badge-alerta">{{ r.motivo }}</span>
+                            {% else %}
+                                {{ r.motivo }}
+                            {% endif %}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
 
-                <td>{{ r.ip }}</td>
+                    <td>{{ r.ip or '—' }}</td>
 
-                <td>
-                    <span class="texto-cinza" title="{{ r.user_agent }}">
-                        {{ r.user_agent[:35] }}...
-                    </span>
-                </td>
+                    <td>
+                        {% if r.user_agent %}
+                            <span class="texto-cinza" title="{{ r.user_agent }}">
+                                {{ r.user_agent[:35] }}...
+                            </span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
 
-                <td>{{ r.data_hora }}</td>
+                    <td>{{ r.data_hora or '—' }}</td>
 
-            </tr>
-            {% endfor %}
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px; color: #999;">
+                        Nenhum log encontrado.
+                    </td>
+                </tr>
+            {% endif %}
         </tbody>
     </table>
 

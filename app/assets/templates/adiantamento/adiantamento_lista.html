@@ -29,6 +29,7 @@
 
   <!-- BOTÃO DIREITA -->
   <div class="acoes-superior">
+    <button class="btn-historico" onclick="abrirModalTeste()" style="background: #9b59b6; margin-right: 10px;">🧪 Consolidação Semanal</button>
     <button class="btn-historico" onclick="abrirHistorico()">📅 Histórico</button>
   </div>
 
@@ -185,6 +186,708 @@
 </div>
 <div id="overlayHistorico" class="modal-historico-overlay" onclick="fecharHistorico()"></div>
 
+<!-- =============== MODAL TESTE - CONSOLIDAÇÃO SEMANAL =============== -->
+<div id="modalTeste" class="modal-teste">
+  <div class="modal-teste-content">
+    <div class="modal-teste-header">
+      <h2>🧪 Consolidação Semanal</h2>
+      <button class="fechar" onclick="fecharModalTeste()">✕</button>
+    </div>
+
+    <!-- ETAPA 1: Seleção de Datas -->
+    <div id="etapa1" class="etapa-ativa">
+      <div class="etapa-header">
+        <span class="etapa-numero">1</span>
+        <h3>Selecione os dias de adiantamento</h3>
+      </div>
+      
+      <div class="form-group">
+        <label>Dias de Adiantamento Diário:</label>
+        
+        <!-- Seleção Individual -->
+        <div style="margin-bottom: 20px;">
+          <label style="font-size: 13px; color: #7f8c8d; margin-bottom: 8px; display: block;">Adicionar data individual:</label>
+          <div id="datePickerContainer" class="date-picker-multiple">
+            <input type="date" id="dateInput" onchange="adicionarData()">
+            <button type="button" onclick="adicionarData()" class="btn-adicionar">+ Adicionar Data</button>
+          </div>
+        </div>
+        
+        <!-- Seleção por Intervalo -->
+        <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+          <label style="font-size: 13px; color: #7f8c8d; margin-bottom: 8px; display: block;">Ou selecionar intervalo (Date a Date):</label>
+          <div class="date-picker-multiple">
+            <input type="date" id="dateInicio" placeholder="Data Início">
+            <span style="margin: 0 10px; color: #7f8c8d;">até</span>
+            <input type="date" id="dateFim" placeholder="Data Fim">
+            <button type="button" onclick="adicionarIntervalo()" class="btn-adicionar" style="background: #9b59b6;">+ Adicionar Intervalo</button>
+          </div>
+        </div>
+        
+        <div id="datasSelecionadas" class="datas-selecionadas">
+          <p class="sem-datas">Nenhuma data selecionada</p>
+        </div>
+      </div>
+
+      <div class="modal-acoes">
+        <button type="button" class="btn-cancelar" onclick="fecharModalTeste()">Cancelar</button>
+        <button type="button" class="btn-avancar" onclick="avancarEtapa2()" disabled id="btnAvancarEtapa1">Avançar →</button>
+      </div>
+    </div>
+
+    <!-- ETAPA 2: Seleção de CSVs -->
+    <div id="etapa2" class="etapa-oculta">
+      <div class="etapa-header">
+        <span class="etapa-numero">2</span>
+        <h3>Selecione os arquivos CSV</h3>
+        <button type="button" class="btn-voltar" onclick="voltarEtapa1()">← Voltar</button>
+      </div>
+
+      <div class="form-group">
+        <label>Arquivos CSV:</label>
+        
+        <!-- Botão de Upload -->
+        <div style="margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 6px; border: 2px dashed #4caf50;">
+          <label style="font-size: 13px; color: #2e7d32; margin-bottom: 8px; display: block; font-weight: 600;">📤 Upload de CSVs (7 ou mais arquivos):</label>
+          <input type="file" id="csvUpload" multiple accept=".csv" style="display: none;" onchange="handleFileUpload(event)">
+          <button type="button" onclick="document.getElementById('csvUpload').click()" class="btn-upload" style="width: 100%; padding: 12px; background: #4caf50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+            📁 Selecionar CSVs para Upload
+          </button>
+          <div id="arquivosUpload" style="margin-top: 10px; font-size: 12px; color: #2e7d32;">
+            <p style="margin: 0;">Nenhum arquivo selecionado</p>
+          </div>
+        </div>
+        
+        <!-- Lista de CSVs Existentes -->
+        <div style="margin-bottom: 10px;">
+          <label style="font-size: 13px; color: #7f8c8d; margin-bottom: 8px; display: block;">Ou selecionar arquivos já enviados:</label>
+        </div>
+        <div id="csvListContainer" class="csv-list-container">
+          {% if arquivos_csv_info %}
+            {% for arquivo in arquivos_csv_info %}
+            <label class="csv-checkbox-item">
+              <input type="checkbox" name="csv_selecionados" value="{{ arquivo.nome_arquivo }}" class="csv-checkbox">
+              <div class="csv-info">
+                <span class="csv-nome">{{ arquivo.nome_original }}</span>
+                <span class="csv-data">📅 {{ arquivo.data_upload_formatada }}</span>
+              </div>
+            </label>
+            {% endfor %}
+          {% else %}
+            <p class="sem-dados">Nenhum arquivo CSV encontrado</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="modal-acoes">
+        <button type="button" class="btn-cancelar" onclick="fecharModalTeste()">Cancelar</button>
+        <button type="button" class="btn-processar" onclick="processarConsolidacao()" disabled id="btnProcessar">Processar Consolidação</button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loadingConsolidacao" class="loading-oculto">
+      <div class="spinner"></div>
+      <p>Processando consolidação...</p>
+    </div>
+  </div>
+</div>
+<div id="overlayTeste" class="modal-overlay" onclick="fecharModalTeste()"></div>
+
+<style>
+.modal-teste {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  z-index: 10000;
+  max-width: 700px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+.modal-teste.open {
+  opacity: 1;
+  pointer-events: all;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.modal-teste-content {
+  padding: 30px;
+}
+
+.modal-teste-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.modal-teste-header h2 {
+  margin: 0;
+  color: #2c3e50;
+}
+
+.modal-teste-header .fechar {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.etapa-oculta {
+  display: none;
+}
+
+.etapa-ativa {
+  display: block;
+}
+
+.etapa-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.etapa-numero {
+  background: #3498db;
+  color: white;
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.etapa-header h3 {
+  margin: 0;
+  flex: 1;
+  color: #2c3e50;
+}
+
+.btn-voltar {
+  background: #95a5a6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.form-group {
+  margin-bottom: 25px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.date-picker-multiple {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.date-picker-multiple input[type="date"] {
+  flex: 1;
+  padding: 10px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.btn-adicionar {
+  background: #2ecc71;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.datas-selecionadas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 40px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.data-chip {
+  background: #3498db;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.data-chip .remover {
+  cursor: pointer;
+  font-weight: bold;
+  opacity: 0.8;
+}
+
+.data-chip .remover:hover {
+  opacity: 1;
+}
+
+.sem-datas {
+  color: #95a5a6;
+  font-style: italic;
+  margin: 0;
+}
+
+.csv-list-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.csv-checkbox-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.csv-checkbox-item:hover {
+  background: #e9ecef;
+}
+
+.csv-checkbox-item input[type="checkbox"] {
+  margin-right: 12px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.csv-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.csv-nome {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.csv-data {
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
+.modal-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 2px solid #e0e0e0;
+}
+
+.btn-cancelar, .btn-avancar, .btn-processar {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.btn-cancelar {
+  background: #95a5a6;
+  color: white;
+}
+
+.btn-avancar {
+  background: #3498db;
+  color: white;
+}
+
+.btn-processar {
+  background: #2ecc71;
+  color: white;
+}
+
+.btn-upload {
+  transition: background 0.2s;
+}
+
+.btn-upload:hover {
+  background: #45a049 !important;
+}
+
+.btn-avancar:disabled, .btn-processar:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.loading-oculto {
+  display: none;
+}
+
+.loading-oculto.ativo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  gap: 20px;
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.modal-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+</style>
+
+<script>
+let datasSelecionadasArray = [];
+let arquivosUploadArray = [];
+
+function abrirModalTeste() {
+  document.getElementById('modalTeste').classList.add('open');
+  document.getElementById('overlayTeste').classList.add('open');
+  resetarModal();
+}
+
+function fecharModalTeste() {
+  document.getElementById('modalTeste').classList.remove('open');
+  document.getElementById('overlayTeste').classList.remove('open');
+  resetarModal();
+}
+
+function resetarModal() {
+  datasSelecionadasArray = [];
+  arquivosUploadArray = [];
+  document.getElementById('datasSelecionadas').innerHTML = '<p class="sem-datas">Nenhuma data selecionada</p>';
+  document.getElementById('btnAvancarEtapa1').disabled = true;
+  document.getElementById('etapa1').classList.add('etapa-ativa');
+  document.getElementById('etapa1').classList.remove('etapa-oculta');
+  document.getElementById('etapa2').classList.add('etapa-oculta');
+  document.getElementById('etapa2').classList.remove('etapa-ativa');
+  document.getElementById('dateInput').value = '';
+  document.getElementById('dateInicio').value = '';
+  document.getElementById('dateFim').value = '';
+  document.getElementById('csvUpload').value = '';
+  atualizarArquivosUpload();
+  
+  // Limpar checkboxes
+  document.querySelectorAll('.csv-checkbox').forEach(cb => cb.checked = false);
+  document.getElementById('btnProcessar').disabled = true;
+}
+
+function adicionarData() {
+  const input = document.getElementById('dateInput');
+  const data = input.value;
+  
+  if (!data) return;
+  
+  if (datasSelecionadasArray.includes(data)) {
+    alert('Esta data já foi adicionada!');
+    return;
+  }
+  
+  datasSelecionadasArray.push(data);
+  datasSelecionadasArray.sort(); // Ordenar datas
+  atualizarDatasSelecionadas();
+  input.value = '';
+  
+  // Habilitar botão avançar se houver pelo menos uma data
+  document.getElementById('btnAvancarEtapa1').disabled = datasSelecionadasArray.length === 0;
+}
+
+function adicionarIntervalo() {
+  const dataInicio = document.getElementById('dateInicio').value;
+  const dataFim = document.getElementById('dateFim').value;
+  
+  if (!dataInicio || !dataFim) {
+    alert('Selecione a data de início e fim!');
+    return;
+  }
+  
+  const inicio = new Date(dataInicio + 'T00:00:00');
+  const fim = new Date(dataFim + 'T00:00:00');
+  
+  if (inicio > fim) {
+    alert('A data de início deve ser anterior à data de fim!');
+    return;
+  }
+  
+  // Adicionar todas as datas do intervalo
+  const novasDatas = [];
+  const dataAtual = new Date(inicio);
+  
+  while (dataAtual <= fim) {
+    const dataStr = dataAtual.toISOString().split('T')[0];
+    if (!datasSelecionadasArray.includes(dataStr)) {
+      novasDatas.push(dataStr);
+      datasSelecionadasArray.push(dataStr);
+    }
+    dataAtual.setDate(dataAtual.getDate() + 1);
+  }
+  
+  if (novasDatas.length === 0) {
+    alert('Todas as datas deste intervalo já foram adicionadas!');
+    return;
+  }
+  
+  datasSelecionadasArray.sort(); // Ordenar datas
+  atualizarDatasSelecionadas();
+  document.getElementById('dateInicio').value = '';
+  document.getElementById('dateFim').value = '';
+  
+  // Habilitar botão avançar
+  document.getElementById('btnAvancarEtapa1').disabled = false;
+}
+
+function removerData(data) {
+  datasSelecionadasArray = datasSelecionadasArray.filter(d => d !== data);
+  atualizarDatasSelecionadas();
+  document.getElementById('btnAvancarEtapa1').disabled = datasSelecionadasArray.length === 0;
+}
+
+function atualizarDatasSelecionadas() {
+  const container = document.getElementById('datasSelecionadas');
+  
+  if (datasSelecionadasArray.length === 0) {
+    container.innerHTML = '<p class="sem-datas">Nenhuma data selecionada</p>';
+    return;
+  }
+  
+  container.innerHTML = datasSelecionadasArray.map(data => {
+    const dataFormatada = new Date(data + 'T00:00:00').toLocaleDateString('pt-BR');
+    return `
+      <div class="data-chip">
+        ${dataFormatada}
+        <span class="remover" onclick="removerData('${data}')">×</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function avancarEtapa2() {
+  if (datasSelecionadasArray.length === 0) {
+    alert('Selecione pelo menos uma data!');
+    return;
+  }
+  
+  document.getElementById('etapa1').classList.remove('etapa-ativa');
+  document.getElementById('etapa1').classList.add('etapa-oculta');
+  document.getElementById('etapa2').classList.remove('etapa-oculta');
+  document.getElementById('etapa2').classList.add('etapa-ativa');
+  
+  // Verificar checkboxes ao mudar
+  verificarCheckboxes();
+}
+
+function voltarEtapa1() {
+  document.getElementById('etapa2').classList.remove('etapa-ativa');
+  document.getElementById('etapa2').classList.add('etapa-oculta');
+  document.getElementById('etapa1').classList.remove('etapa-oculta');
+  document.getElementById('etapa1').classList.add('etapa-ativa');
+}
+
+function verificarCheckboxes() {
+  const checkboxes = document.querySelectorAll('.csv-checkbox:checked');
+  const temArquivosSelecionados = checkboxes.length > 0;
+  const temArquivosUpload = arquivosUploadArray.length > 0;
+  
+  // Habilitar botão se houver arquivos selecionados OU arquivos para upload
+  document.getElementById('btnProcessar').disabled = !(temArquivosSelecionados || temArquivosUpload);
+  
+  // Adicionar listener em todos os checkboxes
+  document.querySelectorAll('.csv-checkbox').forEach(cb => {
+    cb.removeEventListener('change', verificarCheckboxes);
+    cb.addEventListener('change', verificarCheckboxes);
+  });
+}
+
+function handleFileUpload(event) {
+  const files = Array.from(event.target.files);
+  arquivosUploadArray = files;
+  atualizarArquivosUpload();
+  verificarCheckboxes();
+}
+
+function atualizarArquivosUpload() {
+  const container = document.getElementById('arquivosUpload');
+  
+  if (arquivosUploadArray.length === 0) {
+    container.innerHTML = '<p style="margin: 0;">Nenhum arquivo selecionado</p>';
+    return;
+  }
+  
+  container.innerHTML = `
+    <div style="background: white; padding: 10px; border-radius: 4px; margin-top: 8px;">
+      <strong style="color: #2e7d32;">${arquivosUploadArray.length} arquivo(s) selecionado(s):</strong>
+      <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 12px;">
+        ${arquivosUploadArray.map(f => `<li>${f.name}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+function processarConsolidacao() {
+  const checkboxes = document.querySelectorAll('.csv-checkbox:checked');
+  const arquivosSelecionados = Array.from(checkboxes).map(cb => cb.value);
+  
+  // Verificar se há arquivos selecionados OU arquivos para upload
+  if (arquivosSelecionados.length === 0 && arquivosUploadArray.length === 0) {
+    alert('Selecione pelo menos um arquivo CSV ou faça upload de arquivos!');
+    return;
+  }
+  
+  // Mostrar loading
+  document.getElementById('etapa2').style.display = 'none';
+  document.getElementById('loadingConsolidacao').classList.remove('loading-oculto');
+  document.getElementById('loadingConsolidacao').classList.add('ativo');
+  
+  // Se houver arquivos para upload, fazer upload primeiro
+  if (arquivosUploadArray.length > 0) {
+    const formData = new FormData();
+    arquivosUploadArray.forEach(file => {
+      formData.append('arquivos', file);
+    });
+    
+    // Upload dos arquivos
+    fetch('/adiantamento/upload-csvs-consolidacao', {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // Após upload, processar consolidação com todos os arquivos
+        const todosArquivos = [...arquivosSelecionados, ...data.arquivos_salvos];
+        processarConsolidacaoFinal(todosArquivos);
+      } else {
+        alert('Erro no upload: ' + (data.message || 'Erro ao fazer upload dos arquivos'));
+        document.getElementById('loadingConsolidacao').classList.add('loading-oculto');
+        document.getElementById('loadingConsolidacao').classList.remove('ativo');
+        document.getElementById('etapa2').style.display = 'block';
+      }
+    })
+    .catch(error => {
+      console.error('Erro no upload:', error);
+      alert('Erro ao fazer upload dos arquivos');
+      document.getElementById('loadingConsolidacao').classList.add('loading-oculto');
+      document.getElementById('loadingConsolidacao').classList.remove('ativo');
+      document.getElementById('etapa2').style.display = 'block';
+    });
+  } else {
+    // Se não houver upload, processar diretamente
+    processarConsolidacaoFinal(arquivosSelecionados);
+  }
+}
+
+function processarConsolidacaoFinal(arquivos) {
+  // Enviar dados para o servidor
+  fetch('/adiantamento/consolidacao-semanal', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      datas: datasSelecionadasArray,
+      arquivos: arquivos
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      // Fechar modal e loading antes de fazer download
+      document.getElementById('loadingConsolidacao').classList.add('loading-oculto');
+      document.getElementById('loadingConsolidacao').classList.remove('ativo');
+      fecharModalTeste();
+      
+      // Fazer download do arquivo
+      window.location.href = data.redirect_url;
+    } else {
+      alert('Erro: ' + (data.message || 'Erro ao processar consolidação'));
+      document.getElementById('loadingConsolidacao').classList.add('loading-oculto');
+      document.getElementById('loadingConsolidacao').classList.remove('ativo');
+      document.getElementById('etapa2').style.display = 'block';
+    }
+  })
+  .catch(error => {
+    console.error('Erro:', error);
+    alert('Erro ao processar consolidação');
+    document.getElementById('loadingConsolidacao').classList.add('loading-oculto');
+    document.getElementById('loadingConsolidacao').classList.remove('ativo');
+    document.getElementById('etapa2').style.display = 'block';
+  });
+}
+
+// Inicializar verificação de checkboxes
+document.addEventListener('DOMContentLoaded', function() {
+  verificarCheckboxes();
+});
+</script>
 
 <script>
 const modalHistorico = document.getElementById("modalHistorico");

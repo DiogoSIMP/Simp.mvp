@@ -236,29 +236,52 @@ def _processar_consolidado_diario(df_completo, data_hoje):
     Processa consolidado diário baseado nas solicitações do formulário do dia
     Retorna DataFrame com apenas os entregadores que solicitaram no dia
     """
-    from app.models.database import get_db_connection
+    from app.models.database import get_db_connection, is_postgresql_connection, get_db_cursor, get_db_placeholder
     from app.utils.route_helpers import normalize_cpf
+    from app.utils.db_helpers import row_to_dict
     
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = get_db_cursor(conn)
+    is_postgresql = is_postgresql_connection(conn)
+    placeholder = get_db_placeholder(conn)
     
     # Buscar solicitações do dia atual
-    cursor.execute("""
-        SELECT DISTINCT s.cpf, s.nome, e.id_da_pessoa_entregadora
-        FROM solicitacoes_adiantamento s
-        LEFT JOIN entregadores e ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-            LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
-            '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
-            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
-                '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
-        WHERE DATE(s.data_envio) = ?
-    """, (data_hoje,))
+    # PostgreSQL: usar CAST para garantir comparação correta de data
+    # SQLite: usar DATE() que funciona com strings
+    print(f"🔍 [Consolidado Diário] Buscando solicitações do dia: {data_hoje}")
+    
+    if is_postgresql:
+        cursor.execute(f"""
+            SELECT DISTINCT s.cpf, s.nome, e.id_da_pessoa_entregadora
+            FROM solicitacoes_adiantamento s
+            LEFT JOIN entregadores e ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+            WHERE CAST(s.data_envio AS DATE) = {placeholder}::date
+        """, (data_hoje,))
+    else:
+        cursor.execute(f"""
+            SELECT DISTINCT s.cpf, s.nome, e.id_da_pessoa_entregadora
+            FROM solicitacoes_adiantamento s
+            LEFT JOIN entregadores e ON REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                LTRIM(RTRIM(COALESCE(s.cpf, ''))), 
+                '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '') =
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    LTRIM(RTRIM(COALESCE(e.cpf, ''))), 
+                    '.', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '/', '')
+            WHERE DATE(s.data_envio) = {placeholder}
+        """, (data_hoje,))
     
     solicitacoes = cursor.fetchall()
+    print(f"📊 [Consolidado Diário] Encontradas {len(solicitacoes)} solicitações")
+    
     conn.close()
     
     if not solicitacoes:
+        print("⚠️ [Consolidado Diário] Nenhuma solicitação encontrada para o dia")
         return pd.DataFrame()
     
     # Coletar IDs e CPFs dos entregadores que solicitaram
@@ -266,14 +289,21 @@ def _processar_consolidado_diario(df_completo, data_hoje):
     cpfs_solicitantes = set()
     
     for s in solicitacoes:
-        # s é um sqlite3.Row, pode acessar por nome ou índice
-        cpf = s['cpf'] if s['cpf'] else None
-        id_entregador = s['id_da_pessoa_entregadora'] if s['id_da_pessoa_entregadora'] else None
+        # Converter row para dict usando row_to_dict
+        s_dict = row_to_dict(s)
+        if not s_dict:
+            continue
+            
+        cpf = s_dict.get('cpf')
+        id_entregador = s_dict.get('id_da_pessoa_entregadora')
         
         if id_entregador:
             ids_entregadores.add(str(id_entregador))
         if cpf:
             cpfs_solicitantes.add(normalize_cpf(cpf))
+    
+    print(f"📋 [Consolidado Diário] IDs encontrados: {ids_entregadores}")
+    print(f"📋 [Consolidado Diário] CPFs encontrados: {cpfs_solicitantes}")
     
     if not ids_entregadores and not cpfs_solicitantes:
         return pd.DataFrame()
@@ -330,9 +360,12 @@ def _salvar_resultado_processamento(pasta_uploads, resultado, arquivos_salvos, c
     
     # Salvar CSV consolidado geral
     consolidado_path = None
-    if resultado.get('consolidado_geral') is not None:
+    if resultado.get('consolidado_geral') is not None and not resultado['consolidado_geral'].empty:
         consolidado_path = os.path.join(pasta_uploads, ARQUIVO_ULTIMO_CONSOLIDADO)
         resultado['consolidado_geral'].to_csv(consolidado_path, index=False, encoding='utf-8')
+        print(f"✅ CSV consolidado salvo em: {consolidado_path}")
+    else:
+        print(f"⚠️ Consolidado geral está vazio ou None, não salvando CSV")
     
     # Salvar CSV consolidado diário (se fornecido)
     consolidado_diario_path = None
@@ -344,8 +377,8 @@ def _salvar_resultado_processamento(pasta_uploads, resultado, arquivos_salvos, c
         if os.path.exists(diario_existente):
             os.remove(diario_existente)
     
-    # Guardar na sessão
-    session['ultimo_resultado_path'] = resultado_json_path
+    # Guardar na sessão (dados agora estão no banco, usar pasta_uploads como identificador)
+    session['ultimo_resultado_path'] = pasta_uploads  # Usar pasta_uploads como identificador
     session['ultimo_consolidado_path'] = consolidado_path
     session['ultimo_consolidado_diario_path'] = consolidado_diario_path
     session['arquivos_processados'] = [os.path.basename(a) for a in arquivos_salvos]
@@ -380,26 +413,52 @@ def _carregar_resultado_anterior(pasta_uploads):
     if not resultado_json:
         return None, None, None, None
     
-    consolidado_path = session.get('ultimo_consolidado_path') or os.path.join(
-        pasta_uploads, ARQUIVO_ULTIMO_CONSOLIDADO
-    )
-    consolidado_diario_path = session.get('ultimo_consolidado_diario_path') or os.path.join(
-        pasta_uploads, ARQUIVO_CONSOLIDADO_DIARIO
-    )
+    # Tentar usar caminho da sessão primeiro, depois caminho padrão
+    consolidado_path = session.get('ultimo_consolidado_path')
+    if not consolidado_path or not os.path.exists(consolidado_path):
+        consolidado_path = os.path.join(pasta_uploads, ARQUIVO_ULTIMO_CONSOLIDADO)
+        print(f"🔍 Usando caminho padrão para consolidado: {consolidado_path}")
+    else:
+        print(f"🔍 Usando caminho da sessão para consolidado: {consolidado_path}")
+    
+    consolidado_diario_path = session.get('ultimo_consolidado_diario_path')
+    if not consolidado_diario_path or not os.path.exists(consolidado_diario_path):
+        consolidado_diario_path = os.path.join(pasta_uploads, ARQUIVO_CONSOLIDADO_DIARIO)
+        print(f"🔍 Usando caminho padrão para consolidado diário: {consolidado_diario_path}")
+    else:
+        print(f"🔍 Usando caminho da sessão para consolidado diário: {consolidado_diario_path}")
     
     # Carregar consolidado geral
     consolidado_dict_completo = []
     if os.path.exists(consolidado_path):
-        df = pd.read_csv(consolidado_path, encoding='utf-8')
-        consolidado_dict_completo = df.to_dict('records')
-        consolidado_dict_completo = _normalizar_nomes_consolidado(consolidado_dict_completo)
+        try:
+            df = pd.read_csv(consolidado_path, encoding='utf-8')
+            if not df.empty:
+                consolidado_dict_completo = df.to_dict('records')
+                consolidado_dict_completo = _normalizar_nomes_consolidado(consolidado_dict_completo)
+                print(f"✅ Consolidado geral carregado: {len(consolidado_dict_completo)} registros")
+            else:
+                print(f"⚠️ CSV consolidado existe mas está vazio")
+        except Exception as e:
+            print(f"❌ Erro ao carregar CSV consolidado: {e}")
+    else:
+        print(f"⚠️ CSV consolidado não encontrado em: {consolidado_path}")
     
     # Carregar consolidado diário
     consolidado_diario_dict = []
     if os.path.exists(consolidado_diario_path):
-        df_diario = pd.read_csv(consolidado_diario_path, encoding='utf-8')
-        consolidado_diario_dict = df_diario.to_dict('records')
-        consolidado_diario_dict = _normalizar_nomes_consolidado(consolidado_diario_dict)
+        try:
+            df_diario = pd.read_csv(consolidado_diario_path, encoding='utf-8')
+            if not df_diario.empty:
+                consolidado_diario_dict = df_diario.to_dict('records')
+                consolidado_diario_dict = _normalizar_nomes_consolidado(consolidado_diario_dict)
+                print(f"✅ Consolidado diário carregado: {len(consolidado_diario_dict)} registros")
+            else:
+                print(f"⚠️ CSV consolidado diário está vazio: {consolidado_diario_path}")
+        except Exception as e:
+            print(f"❌ Erro ao carregar CSV consolidado diário: {e}")
+    else:
+        print(f"⚠️ CSV consolidado diário não encontrado: {consolidado_diario_path}")
     
     return resultado_json, consolidado_dict_completo, consolidado_path, consolidado_diario_dict
 
@@ -501,20 +560,29 @@ def init_upload_routes(app):
                         print(f"⚠️ Erro ao consolidar diário: {str(e)}")
                         consolidado_diario = None
                 
+                # Verificar se há consolidado_geral antes de salvar
+                print(f"🔍 [POST] Verificando consolidado_geral...")
+                print(f"🔍 [POST] consolidado_geral existe: {resultado.get('consolidado_geral') is not None}")
+                if resultado.get('consolidado_geral') is not None:
+                    print(f"🔍 [POST] consolidado_geral está vazio: {resultado['consolidado_geral'].empty}")
+                    print(f"🔍 [POST] consolidado_geral shape: {resultado['consolidado_geral'].shape}")
+                
                 resultado_serializavel, consolidado_path, consolidado_diario_path = _salvar_resultado_processamento(
                     pasta_uploads, resultado, arquivos_salvos, consolidado_diario
                 )
                 _registrar_historico_upload(pasta_uploads, arquivos_salvos, resultado_serializavel)
                 
-                # Normalizar nomes
-                consolidado_dict_completo = resultado['consolidado_geral'].to_dict('records')
-                consolidado_dict_completo = _normalizar_nomes_consolidado(consolidado_dict_completo)
-                
-                # Paginação
-                page = get_page_from_request()
-                consolidado_pag, total_pages = paginate_items(
-                    consolidado_dict_completo, page, PAGINATION_PER_PAGE_UPLOAD
-                )
+                # Verificar se o CSV foi salvo corretamente
+                if consolidado_path:
+                    if os.path.exists(consolidado_path):
+                        print(f"✅ CSV consolidado confirmado em: {consolidado_path}")
+                        # Verificar tamanho do arquivo
+                        file_size = os.path.getsize(consolidado_path)
+                        print(f"✅ Tamanho do arquivo: {file_size} bytes")
+                    else:
+                        print(f"❌ ERRO: CSV consolidado não foi salvo em {consolidado_path}")
+                else:
+                    print(f"⚠️ AVISO: consolidado_path é None - CSV não foi salvo")
                 
                 # Redirecionar para GET após sucesso para evitar reenvio
                 flash(
@@ -541,9 +609,15 @@ def init_upload_routes(app):
         
         # GET - Carregar resultado anterior (geral e diário)
         try:
+            print(f"🔍 [GET] Carregando dados para pasta: {pasta_uploads}")
             resultado_json, consolidado_geral_dict, _, consolidado_diario_dict = _carregar_resultado_anterior(pasta_uploads)
             
+            print(f"🔍 [GET] resultado_json: {resultado_json is not None}")
+            print(f"🔍 [GET] consolidado_geral_dict: {len(consolidado_geral_dict) if consolidado_geral_dict else 0} registros")
+            print(f"🔍 [GET] consolidado_diario_dict: {len(consolidado_diario_dict) if consolidado_diario_dict else 0} registros")
+            
             if resultado_json is None:
+                print("⚠️ [GET] Nenhum resultado encontrado no banco")
                 # Renderizar tela vazia com botão de upload
                 return render_dashboard(
                     resultado=None,
@@ -599,7 +673,48 @@ def init_upload_routes(app):
                         resultado_json_diario['valor_total_geral'] = sum(float(row.get('valor_total', 0)) for row in consolidado_diario_dict)
                     resultado_json = resultado_json_diario
                 else:
-                    # Não há solicitações no dia
+                    # Verificar se há solicitações no banco (mesmo sem consolidado)
+                    from datetime import date
+                    data_hoje = date.today().strftime('%Y-%m-%d')
+                    from app.models.database import get_db_connection, is_postgresql_connection, get_db_cursor, get_db_placeholder
+                    
+                    conn = get_db_connection()
+                    cursor = get_db_cursor(conn)
+                    is_postgresql = is_postgresql_connection(conn)
+                    placeholder = get_db_placeholder(conn)
+                    
+                    try:
+                        if is_postgresql:
+                            cursor.execute(f"""
+                                SELECT COUNT(*) as total
+                                FROM solicitacoes_adiantamento
+                                WHERE CAST(data_envio AS DATE) = {placeholder}::date
+                            """, (data_hoje,))
+                        else:
+                            cursor.execute(f"""
+                                SELECT COUNT(*) as total
+                                FROM solicitacoes_adiantamento
+                                WHERE DATE(data_envio) = {placeholder}
+                            """, (data_hoje,))
+                        
+                        from app.utils.db_helpers import row_to_dict
+                        result = cursor.fetchone()
+                        total_solicitacoes = 0
+                        if result:
+                            row_dict = row_to_dict(result)
+                            total_solicitacoes = row_dict.get('total', 0) if row_dict else 0
+                        
+                        conn.close()
+                        
+                        if total_solicitacoes > 0:
+                            mensagem = f"Há {total_solicitacoes} solicitação(ões) de adiantamento hoje, mas os dados ainda não foram processados. Processe os arquivos CSV para visualizar o consolidado diário."
+                        else:
+                            mensagem = "Nenhum entregador solicitou adiantamento hoje."
+                    except Exception as e:
+                        print(f"❌ Erro ao verificar solicitações: {e}")
+                        mensagem = "Nenhum entregador solicitou adiantamento hoje."
+                    
+                    # Não há solicitações no dia ou não há consolidado
                     return render_dashboard(
                         resultado=resultado_json,
                         consolidado_dict=None,
@@ -610,7 +725,7 @@ def init_upload_routes(app):
                         entregadores_cadastrados_ids=[],
                         tipo_consolidado=tipo_consolidado,
                         form_aberto=False,
-                        mensagem_diario="Nenhum entregador solicitou adiantamento hoje."
+                        mensagem_diario=mensagem
                     )
             else:
                 # Usar consolidado padrão (todos do CSV)
@@ -667,7 +782,7 @@ def init_upload_routes(app):
             )
     
     @app.route('/lotes')
-    @login_required
+    @adm_or_master_required
     def listar_lotes():
         """Exibe o histórico de uploads/lotes processados"""
         base_uploads = Config.UPLOAD_FOLDER

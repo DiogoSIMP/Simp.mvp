@@ -238,6 +238,8 @@ class EntregadoresService:
                 SELECT 
                     nome,
                     cpf,
+                    email,
+                    cnpj,
                     praca,
                     tipo_de_chave_pix,
                     chave_pix,

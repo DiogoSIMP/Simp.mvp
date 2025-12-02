@@ -331,6 +331,14 @@ def init_auth_routes(app):
         nome_completo = request.form.get('nome_completo', '').strip()
         role = request.form.get('role', 'Operacional')
         
+        # Debug: log dos dados recebidos
+        print(f"🔍 [Criar Usuário] Dados recebidos:")
+        print(f"  - username: {username}")
+        print(f"  - email: {email}")
+        print(f"  - senha: {'*' * len(senha) if senha else '(vazia)'}")
+        print(f"  - nome_completo: {nome_completo}")
+        print(f"  - role: {role}")
+        
         if not all([username, email, senha, nome_completo]):
             flash('Por favor, preencha todos os campos.', 'error')
             return redirect(url_for('admin_usuarios'))
@@ -343,8 +351,12 @@ def init_auth_routes(app):
             AuthService.criar_usuario(username, email, senha, nome_completo, role)
             flash(f'Usuário {nome_completo} criado com sucesso!', 'success')
         except ValueError as e:
+            print(f"❌ [Criar Usuário] ValueError: {e}")
             flash(str(e), 'error')
         except Exception as e:
+            print(f"❌ [Criar Usuário] Erro: {e}")
+            import traceback
+            traceback.print_exc()
             flash(f'Erro ao criar usuário: {str(e)}', 'error')
         
         return redirect(url_for('admin_usuarios'))

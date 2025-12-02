@@ -53,7 +53,7 @@ class StorageService:
                             total_entregadores, valor_total, pasta_uploads, dados_json=None):
         """Salva histórico de upload no banco"""
         from app.utils.db_helpers import db_connection
-        from app.models.database import get_db_cursor, get_db_placeholder
+        from app.models.database import get_db_cursor, get_db_placeholder, is_postgresql_connection
         
         try:
             dados_json_str = StorageService._serialize_json(dados_json)
@@ -64,21 +64,39 @@ class StorageService:
                 is_pg = is_postgresql_connection(conn)
                 
                 if is_pg:
-                    cursor.execute("""
-                        INSERT INTO upload_history 
-                        (lote_id, titulo, data_upload, total_arquivos, total_entregadores, 
-                         valor_total, pasta_uploads, dados_json)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                        ON CONFLICT (lote_id) DO UPDATE SET
-                            titulo = EXCLUDED.titulo,
-                            data_upload = EXCLUDED.data_upload,
-                            total_arquivos = EXCLUDED.total_arquivos,
-                            total_entregadores = EXCLUDED.total_entregadores,
-                            valor_total = EXCLUDED.valor_total,
-                            pasta_uploads = EXCLUDED.pasta_uploads,
-                            dados_json = EXCLUDED.dados_json
-                    """, (lote_id, titulo, data_upload, total_arquivos, total_entregadores, 
-                          valor_total, pasta_uploads, dados_json_str))
+                    # PostgreSQL: usar CAST para JSONB ou NULL
+                    if dados_json_str:
+                        cursor.execute("""
+                            INSERT INTO upload_history 
+                            (lote_id, titulo, data_upload, total_arquivos, total_entregadores, 
+                             valor_total, pasta_uploads, dados_json)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                            ON CONFLICT (lote_id) DO UPDATE SET
+                                titulo = EXCLUDED.titulo,
+                                data_upload = EXCLUDED.data_upload,
+                                total_arquivos = EXCLUDED.total_arquivos,
+                                total_entregadores = EXCLUDED.total_entregadores,
+                                valor_total = EXCLUDED.valor_total,
+                                pasta_uploads = EXCLUDED.pasta_uploads,
+                                dados_json = EXCLUDED.dados_json
+                        """, (lote_id, titulo, data_upload, total_arquivos, total_entregadores, 
+                              valor_total, pasta_uploads, dados_json_str))
+                    else:
+                        cursor.execute("""
+                            INSERT INTO upload_history 
+                            (lote_id, titulo, data_upload, total_arquivos, total_entregadores, 
+                             valor_total, pasta_uploads, dados_json)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, NULL)
+                            ON CONFLICT (lote_id) DO UPDATE SET
+                                titulo = EXCLUDED.titulo,
+                                data_upload = EXCLUDED.data_upload,
+                                total_arquivos = EXCLUDED.total_arquivos,
+                                total_entregadores = EXCLUDED.total_entregadores,
+                                valor_total = EXCLUDED.valor_total,
+                                pasta_uploads = EXCLUDED.pasta_uploads,
+                                dados_json = EXCLUDED.dados_json
+                        """, (lote_id, titulo, data_upload, total_arquivos, total_entregadores, 
+                              valor_total, pasta_uploads))
                 else:
                     cursor.execute("""
                         INSERT OR REPLACE INTO upload_history 
@@ -228,35 +246,35 @@ class StorageService:
     @staticmethod
     def carregar_processamento_resultado(pasta_uploads):
         """Carrega resultado de processamento do banco"""
+        from app.models.database import get_db_connection, get_db_cursor, get_db_placeholder, is_postgresql_connection
+        
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_db_cursor(conn)
+        is_pg = is_postgresql_connection(conn)
+        placeholder = get_db_placeholder(conn)
         
         try:
-            is_pg = StorageService._is_postgresql(cursor)
-            
-            if is_pg:
-                cursor.execute("""
-                    SELECT * FROM processamento_resultados 
-                    WHERE pasta_uploads = %s
-                    ORDER BY data_processamento DESC
-                    LIMIT 1
-                """, (pasta_uploads,))
-            else:
-                cursor.execute("""
-                    SELECT * FROM processamento_resultados 
-                    WHERE pasta_uploads = ?
-                    ORDER BY data_processamento DESC
-                    LIMIT 1
-                """, (pasta_uploads,))
+            cursor.execute(f"""
+                SELECT * FROM processamento_resultados 
+                WHERE pasta_uploads = {placeholder}
+                ORDER BY data_processamento DESC
+                LIMIT 1
+            """, (pasta_uploads,))
             
             row = cursor.fetchone()
             if not row:
+                print(f"⚠️ Nenhum resultado encontrado para pasta_uploads: {pasta_uploads}")
                 return None
             
-            if is_pg:
-                result = dict(row)
-            else:
-                result = dict(row)
+            # Converter para dicionário usando row_to_dict
+            from app.utils.db_helpers import row_to_dict
+            result = row_to_dict(row)
+            
+            if not result:
+                print(f"⚠️ Erro ao converter row para dicionário")
+                return None
+            
+            print(f"✅ Resultado carregado do banco: {len(result)} campos")
             
             # Deserializar JSON
             if 'dados_json' in result:

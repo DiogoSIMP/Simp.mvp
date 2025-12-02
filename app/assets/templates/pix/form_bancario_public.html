@@ -22,9 +22,13 @@
             <label for="cpf">CPF</label>
             <input type="text" id="cpf" name="cpf" required placeholder="Digite seu CPF">
 
+            <!-- E-MAIL -->
+            <label for="email">E-mail</label>
+            <input type="email" id="email" name="email" required placeholder="seu@email.com">
+
             <!-- CNPJ -->
             <label for="cnpj">CNPJ</label>
-            <input type="text" id="cnpj" name="cnpj" required placeholder="00.000.000/0000-00">
+            <input type="text" id="cnpj" name="cnpj" placeholder="00.000.000/0000-00">
 
             <!-- PRAÇA -->
             <label for="praca">Praça</label>
@@ -70,6 +74,13 @@
 
             <button type="submit" class="btn-enviar">Enviar</button>
         </form>
+        
+        <!-- Botão para limpar cache -->
+        <div style="text-align: center; margin-top: 15px;">
+            <button type="button" id="btnLimparCache" style="background: #95a5a6; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;">
+                🔄 Limpar Dados Salvos
+            </button>
+        </div>
     </div>
 </div>
 
@@ -194,6 +205,76 @@ window.addEventListener('DOMContentLoaded', function() {
         label.classList.remove('ativa', 'hover-ativa');
     });
     avaliacaoTexto.textContent = 'Selecione uma avaliação';
+    
+    // ======================================================
+    // CACHE DE DADOS DO FORMULÁRIO (localStorage)
+    // ======================================================
+    const CACHE_KEY = 'pix_form_cache';
+    const CAMPOS_EXCLUIDOS = ['avaliacao']; // Campo que NÃO será salvo
+    
+    // Preencher formulário com dados do cache
+    const dadosCache = localStorage.getItem(CACHE_KEY);
+    
+    if (dadosCache) {
+        try {
+            const dados = JSON.parse(dadosCache);
+            
+            // Preencher campos de texto, email e select
+            Object.keys(dados).forEach(key => {
+                const campo = document.querySelector(`[name="${key}"]`);
+                if (campo) {
+                    if (campo.tagName === 'SELECT') {
+                        campo.value = dados[key];
+                    } else if (campo.type === 'radio') {
+                        // Para radio buttons, marcar o que corresponde ao valor
+                        const radio = document.querySelector(`[name="${key}"][value="${dados[key]}"]`);
+                        if (radio) radio.checked = true;
+                    } else {
+                        campo.value = dados[key];
+                    }
+                }
+            });
+            
+            console.log('✅ Dados do cache preenchidos automaticamente');
+        } catch (e) {
+            console.error('Erro ao carregar cache:', e);
+        }
+    }
+    
+    // Salvar dados no cache quando o formulário for submetido (após validação)
+    document.getElementById('formPix').addEventListener('submit', function(e) {
+        // Verificar se o formulário é válido antes de salvar
+        if (this.checkValidity()) {
+            const formData = new FormData(this);
+            const dados = {};
+            
+            // Coletar todos os dados do formulário, exceto os campos excluídos
+            for (let [key, value] of formData.entries()) {
+                if (!CAMPOS_EXCLUIDOS.includes(key)) {
+                    dados[key] = value;
+                }
+            }
+            
+            // Salvar no localStorage apenas se houver dados
+            if (Object.keys(dados).length > 0) {
+                localStorage.setItem(CACHE_KEY, JSON.stringify(dados));
+            }
+        }
+    });
+    
+    // Botão para limpar cache
+    document.getElementById('btnLimparCache').addEventListener('click', function() {
+        if (confirm('Deseja limpar os dados salvos? O formulário será resetado.')) {
+            localStorage.removeItem(CACHE_KEY);
+            document.getElementById('formPix').reset();
+            // Resetar estrelas
+            estrelasLabels.forEach(label => {
+                label.classList.remove('ativa', 'hover-ativa');
+            });
+            avaliacaoTexto.textContent = 'Selecione uma avaliação';
+            alert('Dados limpos com sucesso!');
+        }
+    });
 });
 </script>
 

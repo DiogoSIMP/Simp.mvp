@@ -10,10 +10,11 @@ from app.models.database import get_db_connection, is_postgresql_connection
 class AuthService:
     """Serviço para gerenciar autenticação de usuários internos"""
     
-    # Hierarquia de roles (Master > Adm > Operacional)
+    # Hierarquia de roles (Master > Adm > Lider > Operacional)
     ROLES = {
-        'Master': 3,
-        'Adm': 2,
+        'Master': 4,
+        'Adm': 3,
+        'Lider': 2,
         'Operacional': 1
     }
     
@@ -29,16 +30,71 @@ class AuthService:
         placeholder = "%s" if is_postgresql else "?"
         
         try:
+            # Verificar quais colunas antigas existem (migração de schema antigo)
+            tem_coluna_nome = False
+            tem_coluna_senha = False
+            
+            try:
+                if is_postgresql:
+                    cursor.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'usuarios' AND column_name IN ('nome', 'senha')
+                    """)
+                    colunas_antigas = [row[0] for row in cursor.fetchall()]
+                    tem_coluna_nome = 'nome' in colunas_antigas
+                    tem_coluna_senha = 'senha' in colunas_antigas
+                else:
+                    cursor.execute("""
+                        SELECT name FROM pragma_table_info('usuarios') WHERE name IN ('nome', 'senha')
+                    """)
+                    colunas_antigas = [row[0] for row in cursor.fetchall()]
+                    tem_coluna_nome = 'nome' in colunas_antigas
+                    tem_coluna_senha = 'senha' in colunas_antigas
+                
+                print(f"🔍 [AuthService] Coluna 'nome' existe: {tem_coluna_nome}")
+                print(f"🔍 [AuthService] Coluna 'senha' existe: {tem_coluna_senha}")
+            except Exception as e:
+                print(f"⚠️ [AuthService] Erro ao verificar colunas antigas: {e}")
+                # Continuar sem as colunas antigas
+            
             senha_hash = generate_password_hash(senha)
-            placeholders = ", ".join([placeholder] * 5)
+            
+            # Montar INSERT dinamicamente baseado nas colunas existentes
+            colunas = ['username', 'email', 'senha_hash']
+            valores = [username, email, senha_hash]
+            
+            if tem_coluna_nome:
+                colunas.append('nome')
+                valores.append(nome_completo)
+            
+            colunas.append('nome_completo')
+            valores.append(nome_completo)
+            
+            if tem_coluna_senha:
+                colunas.append('senha')
+                valores.append('')  # Coluna senha antiga - deixar vazia, usar senha_hash
+            
+            colunas.append('role')
+            valores.append(role)
+            
+            placeholders = ", ".join([placeholder] * len(valores))
+            colunas_str = ", ".join(colunas)
+            
+            print(f"🔍 [AuthService] Inserindo com colunas: {colunas_str}")
             cursor.execute(f"""
-                INSERT INTO usuarios (username, email, senha_hash, nome_completo, role, ativo)
+                INSERT INTO usuarios ({colunas_str}, ativo)
                 VALUES ({placeholders}, 1)
-            """, (username, email, senha_hash, nome_completo, role))
+            """, tuple(valores))
+            
             conn.commit()
+            print(f"✅ [AuthService] Usuário criado com sucesso: {username}")
             return True
         except Exception as e:
             conn.rollback()
+            print(f"❌ [AuthService] Erro ao criar usuário: {e}")
+            import traceback
+            traceback.print_exc()
             raise e
         finally:
             conn.close()

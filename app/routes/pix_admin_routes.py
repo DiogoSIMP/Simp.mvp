@@ -6,6 +6,8 @@ from app.utils.auth_decorators import login_required, master_required
 from app.models.database import get_db_connection, is_postgresql_connection
 from datetime import datetime
 import csv
+import os
+import tempfile
 from app.utils.constants import (
     TEMPLATES_PIX,
     STATUS_PIX
@@ -71,7 +73,16 @@ def _aplicar_filtros(registros, busca, filtro_tipo, filtro_praca, filtro_data, f
         registros = [r for r in registros if (r.get("h_praca") or "") == filtro_praca]
     
     if filtro_data:
-        registros = [r for r in registros if (r.get("data_registro") or "")[:10] == filtro_data]
+        def _formatar_data(data):
+            """Converte data para string no formato YYYY-MM-DD"""
+            if data is None:
+                return ""
+            if isinstance(data, datetime):
+                return data.strftime("%Y-%m-%d")
+            # Se já for string, retornar os primeiros 10 caracteres
+            return str(data)[:10] if data else ""
+        
+        registros = [r for r in registros if _formatar_data(r.get("data_registro")) == filtro_data]
     
     if filtro_ultimas == "1":
         ultimos = {}
@@ -188,7 +199,11 @@ def init_pix_admin_routes(app):
             if not r.get('recebedor') and r.get('cpf'):
                 r['recebedor'] = 'Entregador não cadastrado ainda'
         
-        path = "pix_export.csv"
+        # Usar diretório temporário
+        temp_dir = tempfile.gettempdir()
+        filename = f"pix_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        path = os.path.join(temp_dir, filename)
+        
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -204,27 +219,89 @@ def init_pix_admin_routes(app):
                     r.get("data_registro") or ""
                 ])
         
-        return send_file(path, as_attachment=True)
+        return send_file(path, as_attachment=True, download_name="pix_export.csv")
     
     @app.route("/admin/bancario/logs", methods=["GET"])
     @master_required
     def admin_pix_logs():
-        conn = get_db_connection()
-        is_postgresql = is_postgresql_connection(conn)
+        # Buscar parâmetros de filtro
+        filtro_busca = request.args.get("busca", "").strip()
+        filtro_motivo = request.args.get("motivo", "")
+        data_inicio = request.args.get("inicio", "")
+        data_fim = request.args.get("fim", "")
         
-        if is_postgresql:
-            from psycopg2.extras import RealDictCursor
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-        else:
-            import sqlite3
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+        from app.models.database import get_db_connection, is_postgresql_connection, get_db_cursor, get_db_placeholder
+        from app.utils.db_helpers import db_connection, row_to_dict
         
-        cursor.execute("SELECT * FROM pix_logs ORDER BY data_hora DESC")
-        logs = [dict(r) for r in cursor.fetchall()]
-        conn.close()
+        with db_connection() as conn:
+            placeholder = get_db_placeholder(conn)
+            cursor = get_db_cursor(conn)
+            
+            # Construir query com filtros
+            where_conditions = []
+            params = []
+            
+            if filtro_busca:
+                where_conditions.append(f"(LOWER(cpf) LIKE {placeholder} OR LOWER(chave_pix) LIKE {placeholder} OR LOWER(motivo) LIKE {placeholder})")
+                busca_term = f"%{filtro_busca.lower()}%"
+                params.extend([busca_term, busca_term, busca_term])
+            
+            if filtro_motivo:
+                where_conditions.append(f"motivo = {placeholder}")
+                params.append(filtro_motivo)
+            
+            if data_inicio:
+                where_conditions.append(f"DATE(data_hora) >= {placeholder}")
+                params.append(data_inicio)
+            
+            if data_fim:
+                where_conditions.append(f"DATE(data_hora) <= {placeholder}")
+                params.append(data_fim)
+            
+            # Montar query final
+            query = "SELECT * FROM pix_logs"
+            if where_conditions:
+                query += " WHERE " + " AND ".join(where_conditions)
+            query += " ORDER BY data_hora DESC"
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            logs = []
+            for row in rows:
+                log_dict = row_to_dict(row)
+                if log_dict:
+                    # Formatar data_hora se for datetime
+                    if 'data_hora' in log_dict and isinstance(log_dict['data_hora'], datetime):
+                        log_dict['data_hora'] = log_dict['data_hora'].strftime("%Y-%m-%d %H:%M:%S")
+                    logs.append(log_dict)
+            
+            # Buscar motivos únicos para o dropdown
+            cursor.execute("SELECT DISTINCT motivo FROM pix_logs WHERE motivo IS NOT NULL AND motivo != '' ORDER BY motivo")
+            motivos_rows = cursor.fetchall()
+            motivos = []
+            for row in motivos_rows:
+                motivo = None
+                if isinstance(row, (tuple, list)) and len(row) > 0:
+                    motivo = row[0]
+                elif isinstance(row, dict):
+                    motivo = row.get('motivo')
+                else:
+                    row_dict = row_to_dict(row)
+                    if row_dict:
+                        motivo = row_dict.get('motivo')
+                
+                if motivo and motivo not in motivos:
+                    motivos.append(motivo)
         
-        return render_template(TEMPLATES_PIX['admin_logs'], logs=logs)
+        return render_template(
+            TEMPLATES_PIX['admin_logs'],
+            logs=logs,
+            filtro_busca=filtro_busca,
+            filtro_motivo=filtro_motivo,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            motivos=motivos
+        )
     
     @app.route("/admin/bancario/logs/exportar", methods=["GET"])
     @master_required
@@ -248,7 +325,10 @@ def init_pix_admin_routes(app):
         logs = [dict(r) for r in cursor.fetchall()]
         conn.close()
         
-        path = "pix_logs_export.csv"
+        # Usar diretório temporário
+        filename = f"pix_logs_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        path = os.path.join(tempfile.gettempdir(), filename)
+        
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["CPF", "Chave", "Tipo", "Motivo", "IP", "User Agent", "Data"])
@@ -258,7 +338,7 @@ def init_pix_admin_routes(app):
                     r.get("motivo"), r.get("ip"), r.get("user_agent"), r.get("data_hora")
                 ])
         
-        return send_file(path, as_attachment=True)
+        return send_file(path, as_attachment=True, download_name="pix_logs_export.csv")
     
     @app.route("/admin/bancario/aprovacao", methods=["GET"])
     def admin_pix_aprovacao():

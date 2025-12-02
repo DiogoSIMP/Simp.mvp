@@ -13,9 +13,11 @@
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
-        <div class="alert-flash {{ 'error' if category == 'error' else 'success' if category == 'success' else 'info' }}">
-          {{ message }}
-        </div>
+        {% if category in ['success', 'error', 'info', 'warning'] %}
+          <div class="alert-flash {{ 'error' if category == 'error' else 'success' if category == 'success' else 'info' }}">
+            {{ message }}
+          </div>
+        {% endif %}
       {% endfor %}
     {% endif %}
   {% endwith %}
@@ -45,10 +47,12 @@
             Enviar novo CSV
           </button>
           {% endif %}
+          {% if session.get('user_role') in ['Master', 'Adm'] %}
           <a class="btn-upload-csv ghost" href="{{ url_for('listar_lotes') }}">
             <i class="fa-solid fa-layer-group"></i>
             Ver lotes anteriores
           </a>
+          {% endif %}
         </div>
       {% else %}
         <i class="fa-solid fa-file-csv empty-icon"></i>
@@ -77,13 +81,11 @@
         </select>
       </div>
       {% if tipo_consolidado == 'diario' %}
-      <a class="btn ghost" href="{{ url_for('processar_csv', tipo='padrao') }}">
-        <i class="fa-solid fa-arrow-left"></i> Voltar para consolidado padrão
-      </a>
+
       {% endif %}
-      <a class="btn secondary" href="{{ url_for('listar_lotes') }}">
-        <i class="fa-solid fa-layer-group"></i> Ver lotes
-      </a>
+      {% if session.get('user_role') in ['Master', 'Adm'] %}
+
+      {% endif %}
       <div class="dropdown-exportar" id="dropdownExportarContainer">
         <button class="btn primary dropdown-toggle" type="button" id="btnExportarExcel">
           <i class="fa-solid fa-file-excel"></i> Exportar Excel
@@ -227,9 +229,11 @@
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, message in messages %}
-            <div class="alert {{ 'error' if category == 'error' else 'success' }}">
-              {{ message }}
-            </div>
+            {% if category in ['success', 'error', 'info', 'warning'] %}
+              <div class="alert {{ 'error' if category == 'error' else 'success' }}">
+                {{ message }}
+              </div>
+            {% endif %}
           {% endfor %}
         {% endif %}
       {% endwith %}

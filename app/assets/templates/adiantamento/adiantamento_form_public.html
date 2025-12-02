@@ -61,8 +61,80 @@
 
             <button type="submit" class="btn-enviar">Enviar Solicitação</button>
         </form>
+        
+        <!-- Botão para limpar cache -->
+        <div style="text-align: center; margin-top: 15px;">
+            <button type="button" id="btnLimparCache" style="background: #95a5a6; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;">
+                🔄 Limpar Dados Salvos
+            </button>
+        </div>
     </div>
 </div>
+
+<script>
+// ======================================================
+// CACHE DE DADOS DO FORMULÁRIO (localStorage)
+// ======================================================
+const CACHE_KEY = 'adiantamento_form_cache';
+const CAMPOS_EXCLUIDOS = ['valor', 'concorda']; // Campos que NÃO serão salvos
+
+// Salvar dados no cache quando o formulário for submetido (após validação)
+document.getElementById('formAdiantamento').addEventListener('submit', function(e) {
+    // Verificar se o formulário é válido antes de salvar
+    if (this.checkValidity()) {
+        const formData = new FormData(this);
+        const dados = {};
+        
+        // Coletar todos os dados do formulário, exceto os campos excluídos
+        for (let [key, value] of formData.entries()) {
+            if (!CAMPOS_EXCLUIDOS.includes(key)) {
+                dados[key] = value;
+            }
+        }
+        
+        // Salvar no localStorage apenas se houver dados
+        if (Object.keys(dados).length > 0) {
+            localStorage.setItem(CACHE_KEY, JSON.stringify(dados));
+        }
+    }
+});
+
+// Preencher formulário com dados do cache ao carregar a página
+window.addEventListener('DOMContentLoaded', function() {
+    const dadosCache = localStorage.getItem(CACHE_KEY);
+    
+    if (dadosCache) {
+        try {
+            const dados = JSON.parse(dadosCache);
+            
+            // Preencher campos de texto e email
+            Object.keys(dados).forEach(key => {
+                const campo = document.querySelector(`[name="${key}"]`);
+                if (campo) {
+                    if (campo.tagName === 'SELECT') {
+                        campo.value = dados[key];
+                    } else {
+                        campo.value = dados[key];
+                    }
+                }
+            });
+            
+            console.log('✅ Dados do cache preenchidos automaticamente');
+        } catch (e) {
+            console.error('Erro ao carregar cache:', e);
+        }
+    }
+});
+
+// Botão para limpar cache
+document.getElementById('btnLimparCache').addEventListener('click', function() {
+    if (confirm('Deseja limpar os dados salvos? O formulário será resetado.')) {
+        localStorage.removeItem(CACHE_KEY);
+        document.getElementById('formAdiantamento').reset();
+        alert('Dados limpos com sucesso!');
+    }
+});
+</script>
 
 </body>
 </html>
